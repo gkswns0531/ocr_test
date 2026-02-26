@@ -329,6 +329,7 @@ def create_patched_config(port: int, workers: int, batch_size: int) -> str:
     text = text.replace("api_port: 5002", f"api_port: {port}")
     text = text.replace("port: 5002", f"port: {port}")
     text = text.replace("level: INFO", "level: WARNING")
+    text = text.replace("max_tokens: 4096", "max_tokens: 16384")
     text = text.replace("max_workers: 32", f"max_workers: {workers}")
     text = text.replace("batch_size: 1", f"batch_size: {batch_size}")
     cfg_path.write_text(text)
@@ -639,7 +640,7 @@ def step_start_vllm_server(
         "--served-model-name", "glm-ocr",
         "--port", str(port),
         "--gpu-memory-utilization", str(gpu_mem_util),
-        "--max-model-len", "10240",
+        "--max-model-len", "131072",
         "--trust-remote-code",
         "--no-enable-prefix-caching",
         "--mm-processor-cache-gb", "0",
