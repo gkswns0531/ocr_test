@@ -1,0 +1,12 @@
+rapidfuzz>=3.0
+apted>=1.0.3
+lxml
+tqdm
+datasets
+openai
+nltk
+Pillow
+requests
+evaluate
+pylatexenc
+json-repair

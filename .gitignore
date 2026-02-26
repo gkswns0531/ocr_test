@@ -1,0 +1,28 @@
+# Data & outputs
+data/
+output/
+ocr_cache/
+embeddings/
+captions/
+results/
+predictions/
+prepared_datasets/
+data_cache/
+bench16_output/
+bench16_batch_output/
+pipeline_demo/
+pipeline_save_demo/
+layout_test_vis/
+__pycache__/
+
+# Logs
+*.log
+
+# Env
+.env*
+*.pyc
+
+# Large files
+*.npy
+*.arrow
+*.tar.gz
