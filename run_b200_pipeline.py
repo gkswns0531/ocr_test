@@ -721,7 +721,7 @@ def step_start_vllm_server(
         "--port", str(port),
         "--gpu-memory-utilization", str(gpu_mem_util),
         "--max-model-len", "32768",
-        "--max-num-batched-tokens", "131072",
+        "--max-num-batched-tokens", "65536",
         "--max-num-seqs", "1024",
         "--trust-remote-code",
         "--enable-chunked-prefill",

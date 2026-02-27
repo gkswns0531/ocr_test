@@ -18,11 +18,12 @@ import requests
 from PIL import Image
 
 VLLM_URL = "http://localhost:8000/v1/chat/completions"
-N_REQUESTS = 256
+N_REQUESTS = 512
 CONCURRENCY = 256
 GPU_MEM_UTIL = 0.90
 
-CONFIGS = [131072, 262144, 524288]
+CONFIGS = [32768, 65536, 131072]
+
 
 
 def make_images(n: int = 64) -> list[str]:
@@ -132,8 +133,8 @@ def run_throughput_test(images: list[str]) -> dict:
             tok = r.json().get("usage", {}).get("completion_tokens", 0)
         return lat, r.status_code, tok
 
-    # Warmup
-    for i in range(4):
+    # Warmup (16 sequential to fill prefix cache)
+    for i in range(16):
         send(i)
 
     # Actual test
