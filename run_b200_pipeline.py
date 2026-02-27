@@ -641,7 +641,7 @@ def step_start_vllm_server(
         "--port", str(port),
         "--gpu-memory-utilization", str(gpu_mem_util),
         "--max-model-len", "131072",
-        "--max-num-batched-tokens", "8192",
+        "--max-num-batched-tokens", "16384",
         "--trust-remote-code",
         "--no-enable-prefix-caching",
         "--mm-processor-cache-gb", "0",
