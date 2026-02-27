@@ -101,10 +101,27 @@ else:
 | Layout decode | nvJPEG GPU | cv2 CPU + GPU resize | ~1.5x 느림 |
 | **40K 예상** | **14분** | **0.5분** | **~14분 절약** |
 
+### 병렬화 검증
+
+병렬화가 유효한지 테스트한 결과, **순차가 최적**:
+
+```
+순차 (현재):     0.060s  (0.94ms/img)  ← 가장 빠름
+2 workers:      0.081s  (1.26ms/img)  ← 0.7x (더 느림)
+4 workers:      0.081s  (1.26ms/img)  ← 0.7x
+8 workers:      0.086s  (1.34ms/img)  ← 0.7x
+16 workers:     0.109s  (1.70ms/img)  ← 0.6x (가장 느림)
+batch+8w:       0.063s  (0.98ms/img)  ← 1.0x (동일)
+```
+
+**이유**: 작업이 img당 0.94ms로 이미 너무 빨라서, ThreadPoolExecutor의 스레드 생성/스케줄링/GIL 경합 오버헤드가 실제 작업보다 큼. `/dev/shm`은 RAM 파일시스템이라 I/O 대기가 없으므로 병렬화 이득 없음.
+
+기존 방식(PIL+JPEG)은 img당 123ms 걸려서 병렬화(16 workers → 21ms) 이득이 있었지만, raw bytes 추출은 img당 0.94ms라 병렬화 불필요.
+
 ### 트레이드오프
 
 - Layout 전처리에서 nvJPEG GPU 디코딩 대신 cv2 CPU 디코딩 사용 (PNG이므로)
-- GPU 디코딩 경로 대비 ~0.8초/64장 느리지만, Stage 0에서 ~2.1초 절약하므로 net positive
+- GPU 디코딩 경로 대비 ~0.8초/64장 느리지만, Stage 0에서 ~7초 절약하므로 net positive
 - 향후 데이터셋이 JPEG로 저장되어 있으면 nvJPEG 경로 자동 활성화
 
 ---
