@@ -728,6 +728,102 @@ def _outputs_to_float32(outputs) -> None:
 
 ---
 
+## vLLM 서버 파라미터 완전 가이드
+
+### 파라미터 관계도
+
+```
+클라이언트 (SDK)                                    서버 (vLLM)
+┌──────────────────────┐                   ┌────────────────────────────────────┐
+│ max_workers          │── 동시 HTTP ────→ │ max-num-seqs                      │
+│ (동시 요청 수)        │   요청 수         │ (동시 스케줄링 가능 요청 수)        │
+│                      │                   │                                    │
+│ max_tokens           │── 요청당 ───────→ │ max-model-len                     │
+│ (요청당 최대 생성)    │   최대 출력       │ (입력+출력 합산 최대 시퀀스 길이)   │
+│                      │                   │                                    │
+│ batch_size           │   (layout 전용,   │ max-num-batched-tokens             │
+│ (layout 모델 배치)    │    vLLM 무관)     │ (한 forward step 총 토큰 수)       │
+│                      │                   │                                    │
+│                      │                   │ gpu-memory-utilization             │
+│                      │                   │ (VRAM 중 vLLM 선점 비율)           │
+└──────────────────────┘                   └────────────────────────────────────┘
+```
+
+### 각 파라미터 상세
+
+| 파라미터 | 위치 | 현재 | 역할 |
+|----------|------|------|------|
+| **`max-num-seqs`** | vLLM | 1024 | 서버가 동시에 스케줄링할 수 있는 최대 요청 수. `max_workers` 이상이어야 대기 없음 |
+| **`max-model-len`** | vLLM | 32768 | 1개 요청의 (이미지토큰+프롬프트+생성) 최대 합산 길이. OCR은 ~3000~5000 사용 |
+| **`max-num-batched-tokens`** | vLLM | 131072 | 한 **forward step**에 처리할 총 토큰. chunked-prefill 청크 크기 결정 |
+| **`gpu-memory-utilization`** | vLLM | 0.90 | VRAM 중 vLLM이 선점하는 비율. 나머지 10%는 layout 모델 등에 사용 |
+| **`max_tokens`** | SDK | 16384 | 요청당 최대 **생성** 토큰 수. OCR 평균 ~17토큰 |
+| **`max_workers`** | SDK | 256 | 클라이언트 ThreadPoolExecutor workers = 동시 HTTP 요청 |
+| **`batch_size`** | SDK | 64 | layout 모델 배치 크기. **vLLM과 완전 독립** |
+
+### VRAM 할당 구조
+
+```
+vLLM VRAM 할당 (gpu-memory-utilization=0.90, B200 192GB):
+
+  총 VRAM:            192 GB
+  × 0.90:             172.8 GB (vLLM 선점)
+  - 모델 가중치:      -  1.36 GB (FP8)
+  - Activation:       - 29.3 GB  ← max-num-batched-tokens 에 비례
+  ─────────────────────────────
+  = KV Cache:          142.15 GB
+  = 2,329,040 토큰 슬롯
+
+  동시성 (worst case): 2,329,040 / 32,768 = 71개 (max-model-len 꽉 채울 때)
+  동시성 (실제 OCR):   2,329,040 / ~3,000 = ~776개 (실제 토큰 사용량 기준)
+```
+
+### 실질적 바운드 분석
+
+```
+실제 동시 처리량 = min(
+    max_workers,                                    # 1024 (클라이언트)
+    max-num-seqs,                                   # 1024 (서버 스케줄링)
+    KV_cache_tokens / avg_seq_len,                  # ~776 (메모리)
+    max-num-batched-tokens / avg_prefill_tokens     # ~65  (한 스텝 처리)
+)                                                         ↑
+= min(1024, 1024, 776, 65) = 65개/step     ← 이게 실질적 상한
+```
+
+하지만 **step이 매우 빠르게 반복**되므로 (수십 ms), 실제 throughput은 65개/step이 아닌
+초당 여러 step이 누적되어 22.7 req/s가 됨.
+
+### `max-num-batched-tokens` 스케일링 A/B 테스트 (실측)
+
+**조건**: B200, FP8, 256 동시 요청, 동일 64개 이미지, 서버 매회 완전 재시작 (캐시 초기화)
+
+| batched_tokens | Activation | KV Cache | Req/s | p50 | p95 | 변화 |
+|----------------|-----------|----------|-------|-----|-----|------|
+| **131,072** (128K) | ~29 GB | **142 GB** | **22.7** | 6.1s | 9.0s | **baseline (최적)** |
+| 262,144 (256K) | ~46 GB | 125 GB | 15.9 | 7.5s | 13.0s | **-30%** |
+| 524,288 (512K) | ~80 GB | 91 GB | 14.9 | 7.8s | 14.0s | **-34%** |
+
+**결론: 올리면 오히려 느려짐.**
+
+원인:
+1. 모델이 1.36GB로 GPU SM의 10-22%만 사용 — 큰 배치로 채워도 연산량 증가 미미
+2. Activation 메모리 증가 → KV cache 감소 → prefix cache hit rate 하락
+3. 스텝당 처리시간만 길어지고, decode interleaving 효율 저하
+
+> **131,072가 이 모델(GLM-OCR ~1.3B FP8)의 최적점. 모델이 작아서 batched tokens를 올려도
+> GPU를 더 채울 수 없음. 7B+ 모델이라면 다른 결과가 나올 수 있음.**
+
+### 서버 설정 변경 이력
+
+| 설정 | 초기 | 현재 | 변경 이유 |
+|------|------|------|-----------|
+| `max-num-batched-tokens` | 131072 | **131072 (유지)** | A/B 테스트 결과 최적 |
+| `max-num-seqs` | 512 | **1024** | workers 스케일링 대비 |
+| `enable-chunked-prefill` | OFF | **ON** | prefill-decode interleaving |
+| `gpu-memory-utilization` | 0.75→0.80 | **0.90** | KV cache 증가 |
+
+---
+
 ## 향후 검토 대상
 
 - [x] ~~Stage 1: Data Loading — 검토 완료, 최적화 불필요 (OPT-005)~~

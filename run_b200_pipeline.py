@@ -405,7 +405,7 @@ def create_patched_config(port: int, workers: int, batch_size: int) -> str:
     pool_size = max(workers + 32, 256)
     text = re.sub(r"connection_pool_size:\s*\d+", f"connection_pool_size: {pool_size}", text)
     # Increase queue sizes to handle high parallelism
-    text = re.sub(r"page_maxsize:\s*\d+", f"page_maxsize: 500", text)
+    text = re.sub(r"page_maxsize:\s*\d+", f"page_maxsize: {max(batch_size * 2, 500)}", text)
     text = re.sub(r"region_maxsize:\s*\d+", f"region_maxsize: {max(workers * 20, 5000)}", text)
     # Decrease temperature for more deterministic OCR
     text = text.replace("temperature: 0.8", "temperature: 0.1")
@@ -567,7 +567,7 @@ Examples:
     p.add_argument("--batch-size", type=int, default=64, help="Layout model batch size (default: 64 for B200)")
     p.add_argument("--workers", type=int, default=256, help="VLM parallel workers (default: 256 for B200)")
     p.add_argument("--port", type=int, default=VLLM_PORT, help="vLLM server port")
-    p.add_argument("--gpu-mem-util", type=float, default=0.80, help="vLLM GPU memory utilization (default: 0.80, leaves room for layout model)")
+    p.add_argument("--gpu-mem-util", type=float, default=0.90, help="vLLM GPU memory utilization (default: 0.90, layout model ~66MB BF16 fits in remaining 10%%)")
     p.add_argument("--no-crops", action="store_true", help="Skip saving image/chart crops")
     p.add_argument(
         "--ocr-dtype",
@@ -722,9 +722,9 @@ def step_start_vllm_server(
         "--gpu-memory-utilization", str(gpu_mem_util),
         "--max-model-len", "32768",
         "--max-num-batched-tokens", "131072",
-        "--max-num-seqs", "512",
+        "--max-num-seqs", "1024",
         "--trust-remote-code",
-        "--no-enable-chunked-prefill",
+        "--enable-chunked-prefill",
     ]
 
     # Dtype / quantization
