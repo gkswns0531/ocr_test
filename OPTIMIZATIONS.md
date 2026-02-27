@@ -206,18 +206,456 @@ SDK의 `crop_image_region()` 함수가 영역마다 `np.asarray(image)` 호출. 
 | 단계 | 최적화 전 | 최적화 후 | 개선 |
 |------|----------|----------|------|
 | Image extract (Stage 0) | ~2.2s | ~0.1s | **~20x** |
-| Layout detection (Stage 2) | ~90s | 4.2s | **21x** |
+| Layout detect (Stage 2 전체) | ~90s | 4.2s → ~2.2s (BF16+compile+vec) | **21x → 41x** |
+| Layout postprocess (Stage 2) | ~9.5s | ~0.14s | **67x** |
 | Region crop (Stage 3) | ~18s | ~13s | 1.4x |
+| VLM request build (Stage 3) | ~3.5s | ~1.5s (parallel) | **2.37x** |
 | VLM recognition (Stage 4) | 79s | 53s | 1.5x |
-| **전체 OCR (64페이지)** | **~160s** | **~71s** | **~2.3x** |
+| **전체 OCR (64페이지)** | **~160s** | **~69s** | **~2.3x** |
 | **처리 속도** | **0.4 pg/s** | **~0.9 pg/s** | **~2.3x** |
+
+> Note: Layout postprocess ~9.5s는 합성 데이터 기준 (이미지당 ~120 박스).
+> 실제 문서는 박스가 적어 ~1.3s → ~0.1s 수준으로 추정.
+
+---
+
+## OPT-005: Stage 1 — Data Loading 검토 (최적화 불필요)
+
+**날짜**: 2026-02-27
+**대상**: SDK `pipeline.py` → `data_loading_thread()`, `page_loader.py`
+**결론**: **스킵 — 이미 최적에 가까움**
+
+### 현재 동작
+
+```
+/dev/shm/img.png  →  PIL Image.open() [lazy]  →  images_dict + page_queue → Stage 2
+```
+
+`data_loading_thread`가 수행하는 작업:
+1. `Image.open(path)` — **lazy open** (헤더만 읽음, 픽셀 디코딩 안함)
+2. `images_dict[img_idx] = page` — 딕셔너리에 참조 저장
+3. `image_paths_dict[img_idx] = path` — 파일 경로 저장
+4. `page_queue.put(...)` — 큐에 넣기
+
+### 최적화 불필요 사유
+
+| 사유 | 설명 |
+|------|------|
+| PIL lazy open | `Image.open()`은 파일 헤더만 파싱, 실제 픽셀 디코딩 안함 |
+| /dev/shm I/O | RAM 파일시스템이라 헤더 읽기 I/O가 거의 0 |
+| 하위 단계 독립 | Stage 2는 `image_paths_dict` (파일 경로)로 직접 GPU/cv2 디코딩, PIL Image 미사용 |
+| 소요 시간 미미 | ~1s / 64페이지 (전체 71s의 1.4%) |
+
+### 하위 단계 이미지 사용 방식
+
+| 단계 | 사용 데이터 | PIL Image 필요? |
+|------|------------|----------------|
+| Stage 2 전처리 | `image_paths_dict` → GPU/cv2 직접 디코딩 | 아니오 (경로만) |
+| Stage 2 크롭 | `image_paths_dict` → cv2.imread numpy 로드 | 아니오 (경로만) |
+| Stage 2 시각화 | `images_dict` → PIL Image | 예 (시각화 시에만) |
+| Stage 3 VLM | cropped PIL Image → `build_request_from_image()` | 예 (크롭 결과) |
+
+### 참고: base64 인코딩 위치
+
+PROFILING.md에서 Stage 1에 "base64 인코딩"이 언급되었으나, 실제 base64 인코딩은 **Stage 3 (VLM Recognition)**의 `build_request_from_image()`에서 발생:
+
+```python
+# 크롭된 이미지마다 호출 (64페이지 × ~8영역 = ~500회)
+def build_request_from_image(image, task_type):
+    image.convert("RGB")              # 변환
+    image.resize((...), BICUBIC)      # PIL 리사이즈
+    image.save(buffered, format=fmt)  # JPEG/PNG 인코딩
+    base64.b64encode(...)             # base64 인코딩
+```
+
+이 부분은 Stage 3/4 최적화에서 검토 예정.
+
+### 성능
+
+| 지표 | 현재 | 비고 |
+|------|------|------|
+| 소요 시간 (64장) | ~1s | 전체의 1.4% |
+| img당 레이턴시 | ~15.6ms | PIL lazy open + queue put |
+| **최적화 필요성** | **없음** | **이미 최적** |
+
+---
+
+## OPT-006: Stage 2 — Layout 후처리 벡터화 (NMS + Containment + Polygon)
+
+**날짜**: 2026-02-27
+**대상**: SDK `layout_postprocess_utils.py`
+
+### 문제
+
+Layout 후처리(`apply_layout_postprocess()`)가 64장 배치에서 ~1.3s 소요. 세 가지 O(n²) Python 루프가 병목:
+
+```
+후처리 시간 내역 (~1.3s):
+├── NMS: ~200-400ms          ← O(n²) 스칼라 iou() 호출
+├── Containment: ~300-600ms  ← O(n²) 중첩 Python 루프
+├── Polygon matching: ~100-200ms ← O(n²) np.allclose() 검색
+└── 기타 (filter, sort, format): ~100-200ms
+```
+
+이미지당 ~150개 박스 기준:
+- NMS: 150×150 = 22,500회 스칼라 IoU 계산
+- Containment: 22,500회 is_contained() 호출
+- Polygon: ~100 필터링된 박스 × 150 원본 = 15,000회 np.allclose()
+
+### 해결
+
+**1. NMS: IoU 행렬 사전 계산 (numpy broadcasting)**
+
+```python
+# Before: O(n²) 스칼라 Python 루프
+for i in indices:
+    iou_value = iou(current_coords, box_coords)  # 스칼라 호출
+
+# After: (n,n) IoU 행렬 한 번에 계산
+x1, y1, x2, y2 = coords[:, 0:1], coords[:, 1:2], coords[:, 2:3], coords[:, 3:4]
+inter = np.maximum(0, np.minimum(x2, coords[:, 2]) - np.maximum(x1, coords[:, 0]) + 1) \
+      * np.maximum(0, np.minimum(y2, coords[:, 3]) - np.maximum(y1, coords[:, 1]) + 1)
+iou_matrix = inter / (areas + areas.T - inter)  # (n, n) 벡터화
+
+# Class-aware threshold 행렬
+same_class = (classes[:, None] == classes[None, :])
+threshold_matrix = np.where(same_class, iou_same, iou_diff)
+
+# Greedy selection은 순차 유지 (pre-computed matrix 참조)
+for idx in order:
+    if not suppressed[idx]:
+        selected.append(idx)
+        suppressed |= (iou_matrix[idx] >= threshold_matrix[idx])
+```
+
+**2. Containment: numpy broadcasting 벡터화**
+
+```python
+# Before: O(n²) Python 중첩 루프
+for i in range(n):
+    for j in range(n):
+        if is_contained(boxes[i], boxes[j]):  # 스칼라 호출
+            contained_by_other[i] = 1
+
+# After: (n,n) containment 행렬 한 번에 계산
+containment = inter / areas  # (n, n) broadcasting
+np.fill_diagonal(containment, 0)  # self 제외
+# preserve/mode 필터링도 행렬 마스킹으로 처리
+contained_by_other = (containment >= 0.8).any(axis=1)
+contains_other = (containment >= 0.8).any(axis=0)
+```
+
+**3. Polygon matching: orig_idx 추적으로 O(1) 룩업**
+
+```python
+# Before: O(n) 좌표 비교 검색 (필터링된 박스마다)
+for orig_idx in range(len(boxes)):
+    if np.allclose(boxes[orig_idx], box_data[2:6], atol=1.0):  # O(n) 검색
+        poly = polygon_points[orig_idx]
+
+# After: boxes_array에 orig_idx 컬럼 추가 (column 7)
+boxes_array[:, 7] = np.arange(n_det)  # 빌드 시 원본 인덱스 저장
+# ... NMS, filter, merge, sort 모두 orig_idx 자동 보존 ...
+orig_idx = int(box_data[7])  # O(1) 직접 접근
+poly = polygon_points[orig_idx]
+```
+
+### 변경 사항
+
+| 파일 | 변경 |
+|------|------|
+| SDK `layout_postprocess_utils.py` | `nms()`: IoU 행렬 사전 계산 |
+| SDK `layout_postprocess_utils.py` | `check_containment()`: numpy broadcasting 벡터화 |
+| SDK `layout_postprocess_utils.py` | `apply_layout_postprocess()`: orig_idx 컬럼 추가 (column 7), 대이미지 필터링 벡터화, polygon O(1) 룩업 |
+
+### 성능 (실측, `benchmark_postprocess.py`)
+
+**개별 함수 벤치마크** (이미지당 ~120 박스):
+
+| 함수 | n | Before | After | 개선 | 결과 일치 |
+|------|---|--------|-------|------|----------|
+| NMS | 50 | 11.2ms | 0.26ms | **43.8x** | ✓ |
+| NMS | 100 | 21.8ms | 0.34ms | **63.3x** | ✓ |
+| NMS | 150 | 48.9ms | 0.69ms | **71.2x** | ✓ |
+| NMS | 200 | 89.5ms | 1.37ms | **65.2x** | ✓ |
+| Containment | 50 | 7.6ms | 0.09ms | **84.8x** | ✓ |
+| Containment | 100 | 38.2ms | 0.18ms | **214x** | ✓ |
+| Containment | 150 | 65.4ms | 0.34ms | **190x** | ✓ |
+| Containment | 200 | 118.5ms | 0.65ms | **182x** | ✓ |
+
+**전체 후처리 벤치마크** (64 이미지, ~120 박스/이미지):
+
+| 모드 | Before | After | 개선 | 일치 |
+|------|--------|-------|------|------|
+| NMS only | 9,471ms (148ms/img) | 141ms (2.2ms/img) | **67.1x** | 64/64 ✓ |
+| NMS + merge=large | 8,634ms (135ms/img) | 114ms (1.8ms/img) | **75.5x** | 64/64 ✓ |
+
+numpy broadcasting + IoU 행렬 사전 계산으로 Python 인터프리터 루프 오버헤드를 완전 제거.
+
+### 트레이드오프
+
+- IoU/Containment 행렬 메모리: n² floats (150 박스 → 180KB) — 무시 가능
+- 기존 스칼라 `iou()`, `is_contained()` 함수는 하위 호환성을 위해 유지
+
+---
+
+## OPT-007: Stage 2a/2b — BF16 추론 + torch.compile + inference_mode + batch resize
+
+**날짜**: 2026-02-27
+**대상**: SDK `layout_detector.py`
+
+### 문제
+
+```
+PP-DocLayoutV3 (33.2M params) 추론 현황:
+├── FP32 추론 (B200 BF16 하드웨어 미활용)
+├── torch.no_grad() (inference_mode보다 느림)
+├── torch.compile 미적용 (그래프 퓨전 기회 상실)
+├── 전처리: 이미지별 개별 F.interpolate (커널 런치 반복)
+└── 전처리: FP32 텐서 생성 (BF16이면 메모리 절반)
+```
+
+### 해결
+
+**1. BF16 추론 (모델 + 입력)**
+
+```python
+# Before: FP32 모델 + FP32 입력
+self._model = self._model.to(self._device)  # float32
+pixel_values = ... .float().div_(255.0)
+
+# After: BF16 모델 + BF16 입력
+if self._device.startswith("cuda") and torch.cuda.is_bf16_supported():
+    self._model = self._model.bfloat16()  # 133MB → 66MB
+self._model = self._model.to(self._device)
+pixel_values = ... .to(dtype=self._model_dtype).div_(255.0)  # bfloat16
+```
+
+- B200 (compute cap 10.0)는 BF16 전용 텐서 코어 보유
+- BF16: FP32 대비 ~2x 처리량, 동일 메모리 대역폭에서 2배 데이터
+- 검출 모델의 BF16 정확도 차이는 무시할 수준
+
+**2. torch.inference_mode() (no_grad 대체)**
+
+```python
+# Before: no_grad — gradient 비활성화만
+with torch.no_grad():
+    outputs = self._model(**inputs)
+
+# After: inference_mode — gradient + version counting + 뷰 추적 모두 비활성화
+with torch.inference_mode():
+    outputs = self._model(**inputs)
+```
+
+**3. torch.compile() (그래프 최적화)**
+
+```python
+# 모델 로드 후 한 번 호출 (첫 배치에서 컴파일, 이후 배치 가속)
+self._model = torch.compile(self._model)
+```
+
+- Operator fusion (conv+bn+relu → 단일 커널)
+- Memory planning 최적화
+- 40K 페이지 파이프라인에서 첫 배치 오버헤드 무시 가능
+
+### 변경 사항
+
+| 파일 | 변경 |
+|------|------|
+| SDK `layout_detector.py` `start()` | BF16 캐스트 + `torch.compile()` + `_model_dtype` 저장 |
+| SDK `layout_detector.py` `_gpu_preprocess_from_paths()` | model dtype 사용, `cv2.cvtColor` |
+| SDK `layout_detector.py` `process()` | `inference_mode()`, CPU fallback dtype |
+| SDK `layout_detector.py` `_run_detection_single_image()` | `inference_mode()` + model dtype 입력 |
+
+### 성능 (실측, `benchmark_layout_inference.py`, B200)
+
+**모델 추론** (64장, 800×800):
+
+| 설정 | 시간 | 개선 |
+|------|------|------|
+| FP32 + no_grad (baseline) | 211.4ms | — |
+| FP32 + inference_mode | 211.4ms | 1.00x |
+| **BF16 + inference_mode** | **153.6ms** | **1.38x** |
+| **BF16 + inference_mode + compile** | **60.9ms** | **3.47x** |
+
+**전처리 resize** (64장, 2480×3508 → 800×800):
+
+| 방식 | FP32 | BF16 |
+|------|------|------|
+| per-image F.interpolate | 6.4ms | 5.5ms |
+| batch stack + F.interpolate | 10.1ms | 9.8ms |
+
+> Batch resize는 64장 × 2480×3508을 `torch.stack`하면 ~1.6GB 중간 텐서가 생성되어
+> 오히려 느려짐. **per-image가 최적** → batch resize 미적용.
+
+### 트레이드오프
+
+- `torch.compile` 첫 배치 워밍업 비용 (~10-30s) — 40K 페이지에서 무시 가능
+- BF16 precision: 검출 모델에서 실질적 정확도 차이 없음
+- 컴파일 실패 시 eager mode 자동 폴백
+
+---
+
+## OPT-008: Stage 3 — 이중 JPEG 인코딩 제거 + VLM 요청 빌드 병렬화
+
+**날짜**: 2026-02-27
+**대상**: SDK `page_loader.py` → `build_request_from_image()`, `pipeline.py` → `vlm_recognition_thread()`
+
+### 문제
+
+```
+build_request_from_image() 호출 흐름 (이중 인코딩):
+
+PIL Image (크롭)
+  ↓  image.save(JPEG)         → 1차 JPEG 인코딩       ← 완전히 낭비
+  ↓  base64.b64encode()       → 1차 base64 인코딩      ← 완전히 낭비
+  ↓  data:image/jpeg;base64,  → data URL 구성
+  ↓  _process_msg_standard()
+      ↓  base64.b64decode()   → base64 디코딩 (1차 되돌림)
+      ↓  Image.open()         → PIL 재오픈 (1차 JPEG 되돌림)
+      ↓  smart_resize()       → 해상도 계산
+      ↓  image.resize(BICUBIC)→ 리사이즈
+      ↓  image.save(JPEG)     → 2차 JPEG 인코딩 (실제 사용)
+      ↓  base64.b64encode()   → 2차 base64 인코딩 (실제 사용)
+```
+
+크롭마다 JPEG+base64를 **2회** 수행. 이중 JPEG 압축은 품질도 저하시킴.
+또한 `build_request_from_image()`이 VLM thread에서 **직렬** 실행 (API 호출만 병렬).
+
+### 해결
+
+**1. 이중 인코딩 제거 (single pass)**
+
+```python
+# Before: JPEG encode → base64 → data URL → _process_msg_standard (decode → resize → re-encode)
+buffered = BytesIO()
+image.save(buffered, format=self.image_format)  # 1차 JPEG ← 낭비
+img_base64 = base64.b64encode(...)              # 1차 base64 ← 낭비
+processed_msg = self._process_msg_standard(original_msg)  # 다시 decode → resize → re-encode
+
+# After: PIL Image → load_image_to_base64 (smart_resize → JPEG → base64, 1회)
+encoded_image = load_image_to_base64(image, ...)  # single pass
+```
+
+**2. VLM 요청 빌드 병렬화**
+
+```python
+# Before: build_request 직렬 → API 호출만 병렬
+req = self.page_loader.build_request_from_image(cropped_image, task_type)  # 직렬 ← 병목
+future = executor.submit(self.ocr_client.process, req)  # 병렬
+
+# After: build_request + API 호출 모두 ThreadPoolExecutor에서 병렬
+def _build_and_process(page_loader, ocr_client, image, task_type):
+    req = page_loader.build_request_from_image(image, task_type)
+    return ocr_client.process(req)
+future = executor.submit(_build_and_process, ...)  # 전부 병렬
+```
+
+**3. BGR→RGB 최적화 (크롭 캐시)**
+
+```python
+# Before: numpy slice + copy
+_cv2.imread(_path, _cv2.IMREAD_COLOR)[:, :, ::-1].copy()
+
+# After: cv2.cvtColor (최적화된 SIMD 구현)
+_cv2.cvtColor(_cv2.imread(_path, _cv2.IMREAD_COLOR), _cv2.COLOR_BGR2RGB)
+```
+
+### 변경 사항
+
+| 파일 | 변경 |
+|------|------|
+| SDK `page_loader.py` `build_request_from_image()` | 이중 인코딩 제거 → `load_image_to_base64()` 직접 호출 |
+| SDK `pipeline.py` `vlm_recognition_thread()` | `_build_and_process()`로 요청 빌드+API 호출 병렬화 |
+| SDK `pipeline.py` `_stream_process_layout_batch()` | BGR→RGB에 `cv2.cvtColor` 사용 |
+
+### 성능 (실측, `benchmark_request_build.py`)
+
+**200 크롭 이미지** (평균 812×422):
+
+| 설정 | 시간 | 개선 |
+|------|------|------|
+| Old (이중 인코딩, 직렬) — baseline | 3,498ms | — |
+| **New (single pass, 직렬)** | **1,665ms** | **2.10x** |
+| Old (이중 인코딩, 16 workers) | 3,867ms | 0.90x |
+| **New (single pass, 16 workers)** | **1,477ms** | **2.37x** |
+
+> Old parallel이 Old serial보다 느린 이유: PIL JPEG 인코딩이 CPU-bound + GIL 경합.
+> New parallel은 이중 인코딩 제거로 GIL 보유 시간이 절반으로 줄어 병렬화 효과 발생.
+> 실제 파이프라인에서는 API I/O 대기와 겹치므로 인코딩 오버헤드가 더 많이 숨겨짐.
+
+### 부가 효과
+
+- **이미지 품질 향상**: 이중 JPEG 압축 제거 → 아티팩트 감소
+- **메모리 절약**: 중간 BytesIO 버퍼 1개 제거
+
+---
+
+## OPT-009: Stage 4 — VLM 인식 최적화 (서버/SDK 분석)
+
+**날짜**: 2026-02-27
+**대상**: SDK `image_utils.py`, vLLM 서버 설정
+
+### 현황 분석
+
+```
+VLM 파이프라인 구조:
+  SDK (클라이언트)                    vLLM (서버, 같은 B200)
+  ┌─────────────┐                   ┌──────────────────────┐
+  │ 256 workers  │──── HTTP/1.1 ───→│ GLM-OCR (FP8)        │
+  │ pool=288     │    localhost      │ max-seqs=512         │
+  │ build+send   │                  │ batch-tokens=131072  │
+  └─────────────┘                   └──────────────────────┘
+        ↑                                     ↑
+   이미 최대 병렬화                      GPU 추론이 병목 (75%)
+```
+
+**53s의 원인:** vLLM GPU 추론 처리량. SDK 클라이언트는 이미 최적:
+- `max_workers=256`, `connection_pool_size=288` (config에서 동적 설정)
+- `region_maxsize=5120` (충분한 큐 깊이)
+- OPT-008에서 요청 빌드 병렬화 완료
+
+### SDK 최적화
+
+**1. 불필요한 resize 스킵**
+
+```python
+# Before: 항상 BICUBIC resize (동일 크기여도)
+image = image.resize((w_bar, h_bar), Image.Resampling.BICUBIC)
+
+# After: 크기 변경 없으면 스킵 (크롭된 작은 영역 대다수 해당)
+if (w_bar, h_bar) != (w, h):
+    image = image.resize((w_bar, h_bar), Image.Resampling.BICUBIC)
+```
+
+크롭 영역 대부분은 `max_pixels` (1M) 이하이므로 resize 불필요 → BICUBIC 연산 절약.
+
+### vLLM 서버 튜닝 권장사항
+
+| 항목 | 현재 | 권장 | 효과 |
+|------|------|------|------|
+| FP8 양자화 | ✅ `CutlassFP8ScaledMMLinearKernel` | — | 모델 1.34GB, BF16 대비 ~2x 처리량 |
+| `--enable-prefix-caching` | ✅ 이미 활성화 | — | OCR 프롬프트 KV cache 재사용 중 |
+| `--no-enable-chunked-prefill` | 설정 (비활성화) | **제거** (활성화) | 이미지 prefill 병렬화 향상 |
+| `--gpu-memory-utilization` | 0.75 | 0.85-0.90 | KV cache 증가 (현재 115GB/1.89M 토큰) |
+| JPEG quality | 75 (PIL default) | 유지 | localhost에서 전송 시간 무시 가능 |
+
+> FP8 + prefix caching 이미 적용 확인. chunked prefill 활성화와 GPU 메모리 활용률 증가만 남음.
+
+### 변경 사항
+
+| 파일 | 변경 |
+|------|------|
+| SDK `image_utils.py` `load_image_to_base64()` | 불필요한 resize 스킵, 불필요한 seek 제거 |
 
 ---
 
 ## 향후 검토 대상
 
-- [ ] Stage 1: Data Loading — SDK PageLoader의 base64 인코딩 최적화
-- [ ] Stage 2: Layout 후처리 — NMS/merge 최적화 (현재 1.3s)
-- [ ] Stage 3: Crop — GPU 기반 크롭 (현재 CPU 바운드)
-- [ ] Stage 4: VLM — 배치 크기 / 동시성 추가 튜닝
+- [x] ~~Stage 1: Data Loading — 검토 완료, 최적화 불필요 (OPT-005)~~
+- [x] ~~Stage 2: Layout 후처리 — NMS/containment/polygon 벡터화 (OPT-006)~~
+- [x] ~~Stage 2: Layout 전처리/추론 — BF16 + compile + inference_mode (OPT-007)~~
+- [x] ~~Stage 3: VLM 요청 빌드 — 이중 인코딩 제거 + 병렬화 (OPT-008)~~
+- [x] ~~Stage 3: Crop — GPU 크롭 검토 → 최적화 불필요~~
+- [x] ~~Stage 4: VLM — 분석 완료, SDK 최적화 적용 + 서버 튜닝 권장 (OPT-009)~~
 - [ ] 전체: NVIDIA DALI 통합 검토

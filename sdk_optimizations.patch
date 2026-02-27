@@ -1,5 +1,55 @@
+diff --git a/glmocr/dataloader/page_loader.py b/glmocr/dataloader/page_loader.py
+index 61362af..85ade39 100644
+--- a/glmocr/dataloader/page_loader.py
++++ b/glmocr/dataloader/page_loader.py
+@@ -340,30 +340,35 @@ class PageLoader:
+         if image.mode != "RGB":
+             image = image.convert("RGB")
+ 
+-        # Encode image
+-        buffered = BytesIO()
+-        image.save(buffered, format=self.image_format)
+-        img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
++        # Encode directly (single pass: smart_resize → JPEG → base64).
++        # Previous code did JPEG+base64 here, then _process_msg_standard decoded
++        # it back to PIL and re-encoded — a full redundant encode/decode cycle.
++        encoded_image = load_image_to_base64(
++            image,
++            t_patch_size=self.t_patch_size,
++            max_pixels=self.max_pixels,
++            image_format=self.image_format,
++            patch_expand_factor=self.patch_expand_factor,
++            min_pixels=self.min_pixels,
++        )
+ 
+-        original_msg = {
++        msg = {
+             "role": "user",
+             "content": [
+                 {
+                     "type": "image_url",
+                     "image_url": {
+-                        "url": f"data:image/{self.image_format.lower()};base64,{img_base64}"
++                        "url": f"data:image/{self.image_format.lower()};base64,{encoded_image}"
+                     },
+                 },
+             ],
+         }
+ 
+         if prompt_text:
+-            original_msg["content"].append({"type": "text", "text": prompt_text})
+-
+-        processed_msg = self._process_msg_standard(original_msg)
++            msg["content"].append({"type": "text", "text": prompt_text})
+ 
+         return {
+-            "messages": [processed_msg],
++            "messages": [msg],
+             "max_tokens": self.max_tokens,
+             "temperature": self.temperature,
+             "top_p": self.top_p,
 diff --git a/glmocr/layout/layout_detector.py b/glmocr/layout/layout_detector.py
-index 0a551f2..96837df 100644
+index 0a551f2..63a2f5d 100644
 --- a/glmocr/layout/layout_detector.py
 +++ b/glmocr/layout/layout_detector.py
 @@ -6,6 +6,7 @@ from __future__ import annotations
@@ -21,7 +71,46 @@ index 0a551f2..96837df 100644
              self._device = (
                  f"cuda:{self.cuda_visible_devices}"
                  if self.cuda_visible_devices is not None
-@@ -210,12 +213,48 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -74,10 +77,26 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+             )
+         else:
+             self._device = "cpu"
++
++        # BF16 inference: ~2x throughput on Ampere+ GPUs (saves memory too)
++        if self._device.startswith("cuda") and torch.cuda.is_bf16_supported():
++            self._model = self._model.bfloat16()
++            logger.debug("Layout model cast to bfloat16")
++
+         self._model = self._model.to(self._device)
++        self._model_dtype = next(self._model.parameters()).dtype
++
++        # torch.compile: graph-level operator fusion
++        if self._device.startswith("cuda"):
++            try:
++                self._model = torch.compile(self._model)
++                logger.debug("torch.compile enabled for layout model")
++            except Exception as e:
++                logger.warning("torch.compile failed, using eager mode: %s", e)
++
+         if self.id2label is None:
+             self.id2label = self._model.config.id2label
+-        logger.debug(f"PP-DocLayoutV3 loaded on device: {self._device}")
++        logger.debug(f"PP-DocLayoutV3 loaded on {self._device} (dtype={self._model_dtype})")
+ 
+     def stop(self):
+         """Unload model and processor."""
+@@ -166,8 +185,8 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+     ) -> Dict:
+         """Run model + post_process for a single image. Raises on error."""
+         single_inputs = self._image_processor(images=[image], return_tensors="pt")
+-        single_inputs = {k: v.to(self._device) for k, v in single_inputs.items()}
+-        with torch.no_grad():
++        single_inputs = {k: v.to(self._device, dtype=self._model_dtype) for k, v in single_inputs.items()}
++        with torch.inference_mode():
+             single_outputs = self._model(**single_inputs)
+         single_target = torch.tensor([image.size[::-1]], device=self._device)
+         single_raw = self._image_processor.post_process_object_detection(
+@@ -210,12 +229,51 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                  raw_results.append(self._empty_detection_result())
          return raw_results
  
@@ -32,9 +121,12 @@ index 0a551f2..96837df 100644
 +
 +        JPEG: nvJPEG hardware decode on GPU (~20x faster than PIL).
 +        PNG/other: cv2 CPU decode + GPU resize (still faster than PIL+processor).
++        Outputs in model dtype (BF16 on Ampere+, FP32 otherwise).
 +        """
 +        import torchvision.io
 +        import torch.nn.functional as F
++
++        _dtype = self._model_dtype  # bfloat16 or float32
 +
 +        original_sizes = []
 +        all_tensors = []
@@ -48,12 +140,12 @@ index 0a551f2..96837df 100644
 +            else:
 +                # CPU decode for PNG/other formats, then transfer to GPU
 +                img = cv2.imread(path, cv2.IMREAD_COLOR)
-+                img_rgb = img[:, :, ::-1].copy()  # BGR → RGB
++                img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 +                decoded = torch.from_numpy(img_rgb).permute(2, 0, 1).to(self._device)  # (3, H, W) uint8
 +            _, h, w = decoded.shape
 +            original_sizes.append((w, h))  # (width, height)
 +            resized = F.interpolate(
-+                decoded.unsqueeze(0).float(), size=(target_h, target_w),
++                decoded.unsqueeze(0).to(dtype=_dtype), size=(target_h, target_w),
 +                mode='bilinear', align_corners=False,
 +            )
 +            all_tensors.append(resized.squeeze(0))
@@ -70,7 +162,7 @@ index 0a551f2..96837df 100644
      ) -> List[List[Dict]]:
          """Batch-detect layout regions in-process.
  
-@@ -224,6 +263,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -224,6 +282,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
              save_visualization: Whether to also save visualization.
              visualization_output_dir: Where to save visualization outputs.
              global_start_idx: Start index for visualization filenames (layout_page{N}).
@@ -78,7 +170,7 @@ index 0a551f2..96837df 100644
  
          Returns:
              List[List[Dict]]: Detection results per image.
-@@ -231,28 +271,77 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -231,28 +290,76 @@ class PPDocLayoutDetector(BaseLayoutDetector):
          if self._model is None:
              raise RuntimeError("Layout detector not started. Call start() first.")
  
@@ -109,9 +201,7 @@ index 0a551f2..96837df 100644
              chunk_end = min(chunk_start + self.batch_size, num_images)
 -            chunk_pil = pil_images[chunk_start:chunk_end]
 +            _tc0 = _time.time()
- 
--            inputs = self._image_processor(images=chunk_pil, return_tensors="pt")
--            inputs = {k: v.to(self._device) for k, v in inputs.items()}
++
 +            if _use_gpu_decode:
 +                chunk_paths = image_paths[chunk_start:chunk_end]
 +                pixel_values, chunk_orig_sizes = self._gpu_preprocess_from_paths(
@@ -139,12 +229,13 @@ index 0a551f2..96837df 100644
 +                    torch.from_numpy(batch_np)
 +                    .permute(0, 3, 1, 2)
 +                    .contiguous()
-+                    .to(self._device, non_blocking=True)
-+                    .float()
++                    .to(self._device, dtype=self._model_dtype, non_blocking=True)
 +                    .div_(255.0)
 +                )
 +                chunk_orig_sizes = original_sizes[chunk_start:chunk_end]
-+
+ 
+-            inputs = self._image_processor(images=chunk_pil, return_tensors="pt")
+-            inputs = {k: v.to(self._device) for k, v in inputs.items()}
 +            inputs = {"pixel_values": pixel_values}
 +            if self._device.startswith("cuda"):
 +                torch.cuda.synchronize()
@@ -152,7 +243,8 @@ index 0a551f2..96837df 100644
 +            logger.info(f"Layout process: preprocess {chunk_end - chunk_start} imgs: {_tc1 - _tc0:.2f}s" +
 +                        (" [GPU decode]" if _use_gpu_decode else " [CPU cv2]"))
  
-             with torch.no_grad():
+-            with torch.no_grad():
++            with torch.inference_mode():
                  outputs = self._model(**inputs)
 +            if self._device.startswith("cuda"):
 +                torch.cuda.synchronize()
@@ -166,7 +258,7 @@ index 0a551f2..96837df 100644
              )
              try:
                  if hasattr(outputs, "pred_boxes") and outputs.pred_boxes is not None:
-@@ -285,13 +374,25 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -285,13 +392,25 @@ class PPDocLayoutDetector(BaseLayoutDetector):
              else:
                  pre_threshold = self.threshold
  
@@ -175,7 +267,7 @@ index 0a551f2..96837df 100644
 +            if _use_gpu_decode:
 +                # Convert GPU tensors back to PIL for fallback (rare path)
 +                chunk_pil_for_fallback = [
-+                    Image.fromarray((pixel_values[i].permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8))
++                    Image.fromarray((pixel_values[i].float().permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8))
 +                    for i in range(chunk_end - chunk_start)
 +                ]
 +            else:
@@ -194,7 +286,7 @@ index 0a551f2..96837df 100644
              paddle_format_results = apply_layout_postprocess(
                  raw_results=raw_results,
                  id2label=self.id2label,
-@@ -300,18 +401,22 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -300,18 +419,22 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                  layout_unclip_ratio=self.layout_unclip_ratio,
                  layout_merge_bboxes_mode=self.layout_merge_bboxes_mode,
              )
@@ -218,7 +310,7 @@ index 0a551f2..96837df 100644
                  save_filename = f"layout_page{global_start_idx + img_idx}.jpg"
                  save_path = vis_output_path / save_filename
                  save_layout_visualization(
-@@ -324,10 +429,13 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -324,10 +447,13 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                  )
                  saved_vis_paths.append(str(save_path))
  
@@ -234,7 +326,7 @@ index 0a551f2..96837df 100644
              results = []
              valid_index = 0
              for item in paddle_results:
-@@ -370,4 +478,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -370,4 +496,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                  valid_index += 1
              all_results.append(results)
  
@@ -243,7 +335,7 @@ index 0a551f2..96837df 100644
 +        logger.info(f"Layout process: TOTAL: {_t_norm1 - _t0:.2f}s for {num_images} images")
          return all_results
 diff --git a/glmocr/pipeline/pipeline.py b/glmocr/pipeline/pipeline.py
-index eeeb7b5..d6205b9 100644
+index eeeb7b5..1326450 100644
 --- a/glmocr/pipeline/pipeline.py
 +++ b/glmocr/pipeline/pipeline.py
 @@ -11,11 +11,13 @@ Extension options:
@@ -261,10 +353,16 @@ index eeeb7b5..d6205b9 100644
  from glmocr.dataloader import PageLoader
  from glmocr.ocr_client import OCRClient
  from glmocr.parser_result import PipelineResult
-@@ -32,6 +34,23 @@ logger = get_logger(__name__)
+@@ -32,6 +34,29 @@ logger = get_logger(__name__)
  profiler = get_profiler(__name__)
  
  
++def _build_and_process(page_loader, ocr_client, image, task_type):
++    """Build VLM request and call API (runs inside ThreadPoolExecutor)."""
++    req = page_loader.build_request_from_image(image, task_type)
++    return ocr_client.process(req)
++
++
 +@dataclass
 +class PipelineTimings:
 +    """Timing data for pipeline profiling."""
@@ -285,7 +383,7 @@ index eeeb7b5..d6205b9 100644
  @dataclass
  class _AsyncPipelineState:
      """Shared state for the 3-thread layout path (loader -> layout -> recognition)."""
-@@ -42,6 +61,7 @@ class _AsyncPipelineState:
+@@ -42,6 +67,7 @@ class _AsyncPipelineState:
      recognition_results: List[Tuple[int, Dict]]
      results_lock: threading.Lock
      images_dict: Dict[int, Any]
@@ -293,7 +391,7 @@ index eeeb7b5..d6205b9 100644
      layout_results_dict: Dict[int, List]
      num_images_loaded: List[int]
      unit_indices_holder: List[Optional[List[int]]]
-@@ -51,6 +71,7 @@ class _AsyncPipelineState:
+@@ -51,6 +77,7 @@ class _AsyncPipelineState:
      count_lock: threading.Lock
      exceptions: List[Tuple[str, Exception]]
      exception_lock: threading.Lock
@@ -301,7 +399,7 @@ index eeeb7b5..d6205b9 100644
  
  
  class Pipeline:
-@@ -135,6 +156,7 @@ class Pipeline:
+@@ -135,6 +162,7 @@ class Pipeline:
              recognition_results=[],
              results_lock=threading.Lock(),
              images_dict={},
@@ -309,7 +407,7 @@ index eeeb7b5..d6205b9 100644
              layout_results_dict={},
              num_images_loaded=[0],
              unit_indices_holder=[None],
-@@ -144,6 +166,7 @@ class Pipeline:
+@@ -144,6 +172,7 @@ class Pipeline:
              count_lock=threading.Lock(),
              exceptions=[],
              exception_lock=threading.Lock(),
@@ -317,7 +415,7 @@ index eeeb7b5..d6205b9 100644
          )
  
      def process(
-@@ -303,19 +326,31 @@ class Pipeline:
+@@ -303,19 +332,31 @@ class Pipeline:
  
          state = self._create_async_pipeline_state(page_maxsize, region_maxsize)
  
@@ -349,7 +447,7 @@ index eeeb7b5..d6205b9 100644
                  state.page_queue.put(("done", None, None))
              except Exception as e:
                  logger.exception("Data loading thread error: %s", e)
-@@ -327,6 +362,7 @@ class Pipeline:
+@@ -327,6 +368,7 @@ class Pipeline:
  
          def layout_detection_thread() -> None:
              try:
@@ -357,7 +455,7 @@ index eeeb7b5..d6205b9 100644
                  batch_images: List[Any] = []
                  batch_indices: List[int] = []
                  loading_complete = False
-@@ -345,6 +381,7 @@ class Pipeline:
+@@ -345,6 +387,7 @@ class Pipeline:
                                  save_layout_visualization,
                                  layout_vis_output_dir,
                                  global_start_idx,
@@ -365,7 +463,7 @@ index eeeb7b5..d6205b9 100644
                              )
                              global_start_idx += len(batch_indices)
                              batch_images = []
-@@ -363,6 +400,7 @@ class Pipeline:
+@@ -363,6 +406,7 @@ class Pipeline:
                                  save_layout_visualization,
                                  layout_vis_output_dir,
                                  global_start_idx,
@@ -373,7 +471,7 @@ index eeeb7b5..d6205b9 100644
                              )
                              global_start_idx += len(batch_indices)
                              batch_images = []
-@@ -379,7 +417,9 @@ class Pipeline:
+@@ -379,7 +423,9 @@ class Pipeline:
                                  save_layout_visualization,
                                  layout_vis_output_dir,
                                  global_start_idx,
@@ -383,7 +481,7 @@ index eeeb7b5..d6205b9 100644
                          state.region_queue.put(("done", None, None))
                          break
                      elif item_type == "error":
-@@ -434,7 +474,8 @@ class Pipeline:
+@@ -434,7 +480,8 @@ class Pipeline:
  
          def vlm_recognition_thread() -> None:
              try:
@@ -393,7 +491,24 @@ index eeeb7b5..d6205b9 100644
                  futures: Dict[Any, Tuple[Dict, str, int]] = {}
                  pending_skip: List[Tuple[Dict, str, int]] = []
                  processing_complete = False
-@@ -506,7 +547,9 @@ class Pipeline:
+@@ -479,10 +526,13 @@ class Pipeline:
+                         if task_type == "skip":
+                             pending_skip.append((region, task_type, page_idx))
+                         else:
+-                            req = self.page_loader.build_request_from_image(
+-                                cropped_image, task_type
++                            # Parallelize both request building (JPEG encode + base64)
++                            # and API call together in the thread pool.
++                            future = executor.submit(
++                                _build_and_process,
++                                self.page_loader, self.ocr_client,
++                                cropped_image, task_type,
+                             )
+-                            future = executor.submit(self.ocr_client.process, req)
+                             futures[future] = (region, task_type, page_idx)
+                     elif item_type == "done":
+                         processing_complete = True
+@@ -506,7 +556,9 @@ class Pipeline:
                              state.recognition_results.append((page_idx, info))
                          maybe_notify_ready_units(page_idx)
                  executor.shutdown(wait=True)
@@ -403,7 +518,7 @@ index eeeb7b5..d6205b9 100644
                  logger.exception("VLM recognition thread error: %s", e)
                  with state.exception_lock:
                      state.exceptions.append(("VLMRecognitionThread", e))
-@@ -605,6 +648,17 @@ class Pipeline:
+@@ -605,6 +657,17 @@ class Pipeline:
              emitted.add(u)
  
          t3.join()
@@ -421,7 +536,7 @@ index eeeb7b5..d6205b9 100644
          with state.exception_lock:
              if state.exceptions:
                  raise RuntimeError("; ".join(f"{n}: {e}" for n, e in state.exceptions))
-@@ -619,20 +673,67 @@ class Pipeline:
+@@ -619,20 +682,67 @@ class Pipeline:
          save_visualization: bool,
          vis_output_dir: Optional[str],
          global_start_idx: int,
@@ -455,7 +570,7 @@ index eeeb7b5..d6205b9 100644
 +                if img_idx not in _np_cache:
 +                    _path = _state.image_paths_dict.get(img_idx) if _state else None
 +                    if _path:
-+                        _np_cache[img_idx] = _cv2.imread(_path, _cv2.IMREAD_COLOR)[:, :, ::-1].copy()
++                        _np_cache[img_idx] = _cv2.cvtColor(_cv2.imread(_path, _cv2.IMREAD_COLOR), _cv2.COLOR_BGR2RGB)
 +                    else:
 +                        _np_cache[img_idx] = _np.asarray(image)
 +                img_array = _np_cache[img_idx]
@@ -490,7 +605,7 @@ index eeeb7b5..d6205b9 100644
                  region_queue.put(
                      (
                          "region",
-@@ -640,6 +741,13 @@ class Pipeline:
+@@ -640,6 +750,13 @@ class Pipeline:
                          (cropped, region, region["task_type"], img_idx),
                      )
                  )
@@ -504,3 +619,284 @@ index eeeb7b5..d6205b9 100644
  
      def _extract_image_urls(self, request_data: Dict[str, Any]) -> List[str]:
          """Extract image URLs from request_data."""
+diff --git a/glmocr/utils/image_utils.py b/glmocr/utils/image_utils.py
+index e228cbb..187a6ce 100644
+--- a/glmocr/utils/image_utils.py
++++ b/glmocr/utils/image_utils.py
+@@ -161,13 +161,13 @@ def load_image_to_base64(
+         max_pixels=max_pixels,
+     )
+ 
+-    # Resize
+-    image = image.resize((w_bar, h_bar), Image.Resampling.BICUBIC)
++    # Resize (skip if dimensions already match)
++    if (w_bar, h_bar) != (w, h):
++        image = image.resize((w_bar, h_bar), Image.Resampling.BICUBIC)
+ 
+     # Encode as bytes
+     buffered = io.BytesIO()
+     image.save(buffered, format=image_format)
+-    buffered.seek(0)
+     image_data = buffered.getvalue()
+ 
+     # Convert bytes to base64
+diff --git a/glmocr/utils/layout_postprocess_utils.py b/glmocr/utils/layout_postprocess_utils.py
+index 65e9801..9105251 100644
+--- a/glmocr/utils/layout_postprocess_utils.py
++++ b/glmocr/utils/layout_postprocess_utils.py
+@@ -29,36 +29,57 @@ def iou(box1, box2):
+ 
+ 
+ def nms(boxes, iou_same=0.6, iou_diff=0.95):
+-    """Perform Non-Maximum Suppression (NMS) with different IoU thresholds for same and different classes."""
+-    # Extract class scores
++    """Perform NMS with different IoU thresholds for same and different classes.
++
++    Uses vectorized IoU matrix computation (numpy broadcasting) instead of
++    per-pair scalar Python calls. The greedy selection loop remains sequential
++    but operates on the pre-computed matrix.
++    """
++    n = len(boxes)
++    if n == 0:
++        return []
++
++    classes = boxes[:, 0]
+     scores = boxes[:, 1]
++    coords = boxes[:, 2:6]
++
++    # Pre-compute full IoU matrix using broadcasting: O(n²) vectorized
++    x1 = coords[:, 0:1]  # (n, 1)
++    y1 = coords[:, 1:2]
++    x2 = coords[:, 2:3]
++    y2 = coords[:, 3:4]
++
++    areas = (x2 - x1 + 1) * (y2 - y1 + 1)  # (n, 1)
++
++    # Pairwise intersection: (n, 1) op (1, n) → (n, n)
++    xi1 = np.maximum(x1, coords[:, 0])
++    yi1 = np.maximum(y1, coords[:, 1])
++    xi2 = np.minimum(x2, coords[:, 2])
++    yi2 = np.minimum(y2, coords[:, 3])
+ 
+-    # Sort indices by scores in descending order
+-    indices = np.argsort(scores)[::-1]
+-    selected_boxes = []
++    inter = np.maximum(0, xi2 - xi1 + 1) * np.maximum(0, yi2 - yi1 + 1)
++    union = areas + areas.T - inter
++    iou_matrix = np.where(union > 0, inter / union, 0.0)
+ 
+-    while len(indices) > 0:
+-        current = indices[0]
+-        current_box = boxes[current]
+-        current_class = current_box[0]
+-        current_coords = current_box[2:]
++    # Class-aware threshold matrix: (n, n)
++    same_class = (classes[:, None] == classes[None, :])
++    threshold_matrix = np.where(same_class, iou_same, iou_diff)
+ 
+-        selected_boxes.append(current)
+-        indices = indices[1:]
++    # Greedy NMS using pre-computed IoU matrix
++    order = np.argsort(scores)[::-1]
++    suppressed = np.zeros(n, dtype=bool)
++    selected = []
+ 
+-        filtered_indices = []
+-        for i in indices:
+-            box = boxes[i]
+-            box_class = box[0]
+-            box_coords = box[2:]
+-            iou_value = iou(current_coords, box_coords)
+-            threshold = iou_same if current_class == box_class else iou_diff
++    for idx in order:
++        if suppressed[idx]:
++            continue
++        selected.append(idx)
++        # Suppress boxes exceeding their class-aware threshold
++        suppress_mask = iou_matrix[idx] >= threshold_matrix[idx]
++        suppressed |= suppress_mask
++        suppressed[idx] = False  # Don't suppress self
+ 
+-            # If the IoU is below the threshold, keep the box
+-            if iou_value < threshold:
+-                filtered_indices.append(i)
+-        indices = filtered_indices
+-    return selected_boxes
++    return selected
+ 
+ 
+ def is_contained(box1, box2):
+@@ -80,36 +101,61 @@ def is_contained(box1, box2):
+ def check_containment(boxes, preserve_indices=None, category_index=None, mode=None):
+     """Check containment relationships among boxes.
+ 
++    Vectorized using numpy broadcasting: computes (n, n) containment matrix
++    in a single operation instead of O(n²) Python loops.
++
+     Args:
+-        boxes: Array of boxes
+-        preserve_indices: Set of class indices to always preserve (e.g., image, seal, chart)
++        boxes: Array of boxes [cls_id, score, x1, y1, x2, y2]
++        preserve_indices: Set of class indices to always preserve
+         category_index: Category index for mode-specific filtering
+         mode: Filtering mode ('large' or 'small')
+     """
+     n = len(boxes)
+-    contains_other = np.zeros(n, dtype=int)
+-    contained_by_other = np.zeros(n, dtype=int)
++    if n == 0:
++        return np.zeros(0, dtype=int), np.zeros(0, dtype=int)
++
++    classes = boxes[:, 0]
++    x1 = boxes[:, 2:3]  # (n, 1)
++    y1 = boxes[:, 3:4]
++    x2 = boxes[:, 4:5]
++    y2 = boxes[:, 5:6]
++
++    areas = (x2 - x1) * (y2 - y1)  # (n, 1)
++
++    # Pairwise intersection: (n, 1) op (1, n) → (n, n)
++    xi1 = np.maximum(x1, boxes[:, 2])
++    yi1 = np.maximum(y1, boxes[:, 3])
++    xi2 = np.minimum(x2, boxes[:, 4])
++    yi2 = np.minimum(y2, boxes[:, 5])
++
++    inter = np.maximum(0, xi2 - xi1) * np.maximum(0, yi2 - yi1)
++
++    # containment[i, j] = intersection(i,j) / area(i): how much of box_i overlaps box_j
++    containment = np.where(areas > 0, inter / areas, 0.0)
++
++    # Exclude self-containment
++    np.fill_diagonal(containment, 0.0)
++
++    # Preserved boxes should never be marked as contained
++    if preserve_indices is not None and len(preserve_indices) > 0:
++        preserve_mask = np.isin(classes, list(preserve_indices))
++        containment[preserve_mask, :] = 0.0
++
++    # Mode-specific filtering
++    if category_index is not None and mode is not None:
++        if mode == "large":
++            # Only check containment BY the specific category (j must be category)
++            non_cat_j = (classes != category_index)
++            containment[:, non_cat_j] = 0.0
++        elif mode == "small":
++            # Only check containment OF the specific category (i must be category)
++            non_cat_i = (classes != category_index)
++            containment[non_cat_i, :] = 0.0
++
++    is_contained_mask = containment >= 0.8
++    contained_by_other = is_contained_mask.any(axis=1).astype(int)
++    contains_other = is_contained_mask.any(axis=0).astype(int)
+ 
+-    for i in range(n):
+-        for j in range(n):
+-            if i == j:
+-                continue
+-            # Skip if box i is in preserve list (should never be marked as contained)
+-            if preserve_indices is not None and boxes[i][0] in preserve_indices:
+-                continue
+-            if category_index is not None and mode is not None:
+-                if mode == "large" and boxes[j][0] == category_index:
+-                    if is_contained(boxes[i], boxes[j]):
+-                        contained_by_other[i] = 1
+-                        contains_other[j] = 1
+-                if mode == "small" and boxes[i][0] == category_index:
+-                    if is_contained(boxes[i], boxes[j]):
+-                        contained_by_other[i] = 1
+-                        contains_other[j] = 1
+-            else:
+-                if is_contained(boxes[i], boxes[j]):
+-                    contained_by_other[i] = 1
+-                    contains_other[j] = 1
+     return contains_other, contained_by_other
+ 
+ 
+@@ -218,20 +264,19 @@ def apply_layout_postprocess(
+         polygon_points = result.get("polygon_points", [])
+         img_size = img_sizes[img_idx]  # (width, height)
+ 
+-        # Build intermediate format: [cls_id, score, x1, y1, x2, y2, order]
+-        boxes_with_order = []
+-        for i in range(len(scores)):
+-            cls_id = int(labels[i])
+-            score = float(scores[i])
+-            x1, y1, x2, y2 = boxes[i]
+-            order = int(order_seq[i])
+-            boxes_with_order.append([cls_id, score, x1, y1, x2, y2, order])
+-
+-        if len(boxes_with_order) == 0:
++        # Build intermediate format: [cls_id, score, x1, y1, x2, y2, order, orig_idx]
++        # orig_idx tracks the original detection index for O(1) polygon lookup later.
++        n_det = len(scores)
++        if n_det == 0:
+             paddle_format_results.append([])
+             continue
+ 
+-        boxes_array = np.array(boxes_with_order)
++        boxes_array = np.empty((n_det, 8), dtype=np.float64)
++        boxes_array[:, 0] = labels
++        boxes_array[:, 1] = scores
++        boxes_array[:, 2:6] = boxes
++        boxes_array[:, 6] = order_seq
++        boxes_array[:, 7] = np.arange(n_det)
+ 
+         # Apply NMS
+         if layout_nms:
+@@ -247,21 +292,16 @@ def apply_layout_postprocess(
+                 area_thres = 0.93
+             image_index = all_labels.index("image") if "image" in all_labels else None
+             img_area = img_size[0] * img_size[1]
+-            filtered_boxes = []
+-            for box in boxes_array:
+-                label_index, score, xmin, ymin, xmax, ymax = box[:6]
+-                if label_index == image_index:
+-                    xmin = max(0, xmin)
+-                    ymin = max(0, ymin)
+-                    xmax = min(img_size[0], xmax)
+-                    ymax = min(img_size[1], ymax)
+-                    box_area = (xmax - xmin) * (ymax - ymin)
+-                    if box_area <= area_thres * img_area:
+-                        filtered_boxes.append(box)
+-                else:
+-                    filtered_boxes.append(box)
+-            if len(filtered_boxes) > 0:
+-                boxes_array = np.array(filtered_boxes)
++            if image_index is not None:
++                is_image = boxes_array[:, 0] == image_index
++                clipped_x1 = np.maximum(0, boxes_array[:, 2])
++                clipped_y1 = np.maximum(0, boxes_array[:, 3])
++                clipped_x2 = np.minimum(img_size[0], boxes_array[:, 4])
++                clipped_y2 = np.minimum(img_size[1], boxes_array[:, 5])
++                box_areas = (clipped_x2 - clipped_x1) * (clipped_y2 - clipped_y1)
++                keep = ~is_image | (box_areas <= area_thres * img_area)
++                if keep.any():
++                    boxes_array = boxes_array[keep]
+ 
+         # Apply merge_bboxes_mode
+         if layout_merge_bboxes_mode:
+@@ -368,18 +408,13 @@ def apply_layout_postprocess(
+             if x1 >= x2 or y1 >= y2:
+                 continue
+ 
+-            # Since we may have filtered boxes, we need to match by coordinates
++            # O(1) polygon lookup using tracked orig_idx (column 7)
+             poly = None
+-            if len(polygon_points) > 0:
+-                # Try to find matching polygon by comparing coordinates
+-                for orig_idx in range(len(boxes)):
+-                    if np.allclose(boxes[orig_idx], box_data[2:6], atol=1.0):
+-                        if orig_idx < len(polygon_points):
+-                            candidate_poly = polygon_points[orig_idx]
+-                            # Some detectors may return None for missing polygons
+-                            if candidate_poly is not None:
+-                                poly = candidate_poly.astype(np.float32)
+-                        break
++            orig_idx = int(box_data[7])
++            if orig_idx < len(polygon_points):
++                candidate_poly = polygon_points[orig_idx]
++                if candidate_poly is not None:
++                    poly = candidate_poly.astype(np.float32)
+ 
+             if poly is None:
+                 # Fallback: convert box to 4-point polygon
