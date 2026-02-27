@@ -899,22 +899,36 @@ def _ocr_from_arrow_shards(
             # Start GPU monitoring
             gpu_mon = GPUMonitor(interval=0.5).start()
 
-            # Save ALL images to temp files in parallel
+            # Extract raw image bytes from Arrow (skip PIL decode/re-encode)
+            # Images in Arrow are stored as encoded PNG/JPEG bytes already.
+            # Writing raw bytes to /dev/shm avoids: PIL decode + JPEG re-encode + disk I/O
+            from datasets import Image as _DatasetImage
             from concurrent.futures import ThreadPoolExecutor as _TPE
             t_save_start = time.time()
-            tmp_paths: list[str] = [f"/tmp/ocr_batch_{shard_idx}_{li}.jpg" for li in pending_indices]
+            shm_dir = Path("/dev/shm/ocr_batch")
+            shm_dir.mkdir(exist_ok=True)
 
-            def _save_img(args: tuple[int, int]) -> None:
-                idx, local_idx = args
-                row = ds[local_idx]
-                pil_img = row["image"].convert("RGB")
-                pil_img.save(tmp_paths[idx], format="JPEG", quality=95)
-                del pil_img, row
+            ds_raw = ds.cast_column("image", _DatasetImage(decode=False))
+            tmp_paths: list[str] = []
+            for idx, local_idx in enumerate(pending_indices):
+                raw = ds_raw[local_idx]["image"]
+                img_bytes: bytes | None = raw.get("bytes")
+                if img_bytes:
+                    ext = ".png" if img_bytes[:4] == b'\x89PNG' else ".jpg"
+                    tmp_path = str(shm_dir / f"s{shard_idx}_{local_idx}{ext}")
+                    with open(tmp_path, "wb") as wf:
+                        wf.write(img_bytes)
+                else:
+                    # Fallback: decode with PIL and save (rare — external file reference)
+                    tmp_path = str(shm_dir / f"s{shard_idx}_{local_idx}.jpg")
+                    row = ds[local_idx]
+                    row["image"].convert("RGB").save(tmp_path, format="JPEG", quality=95)
+                    del row
+                tmp_paths.append(tmp_path)
+            del ds_raw
 
-            with _TPE(max_workers=min(16, n_pending)) as save_exec:
-                list(save_exec.map(_save_img, enumerate(pending_indices)))
             t_save_end = time.time()
-            print(f"    Image save: {t_save_end - t_save_start:.1f}s ({n_pending} images)")
+            print(f"    Image extract: {t_save_end - t_save_start:.1f}s ({n_pending} images → /dev/shm)")
             _release_memory()
 
             # Feed ALL images to OCR at once using stream mode

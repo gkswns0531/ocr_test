@@ -1,5 +1,5 @@
 diff --git a/glmocr/layout/layout_detector.py b/glmocr/layout/layout_detector.py
-index 0a551f2..af3b16b 100644
+index 0a551f2..96837df 100644
 --- a/glmocr/layout/layout_detector.py
 +++ b/glmocr/layout/layout_detector.py
 @@ -6,6 +6,7 @@ from __future__ import annotations
@@ -21,27 +21,35 @@ index 0a551f2..af3b16b 100644
              self._device = (
                  f"cuda:{self.cuda_visible_devices}"
                  if self.cuda_visible_devices is not None
-@@ -210,12 +213,40 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -210,12 +213,48 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                  raw_results.append(self._empty_detection_result())
          return raw_results
  
 +    def _gpu_preprocess_from_paths(
-+        self, jpeg_paths: List[str], target_h: int, target_w: int
++        self, image_paths: List[str], target_h: int, target_w: int
 +    ) -> tuple:
-+        """GPU-accelerated JPEG decode + resize. Returns (pixel_values, original_sizes).
++        """Fast image decode + GPU resize. Returns (pixel_values, original_sizes).
 +
-+        Uses torchvision.io.decode_jpeg with CUDA for ~20x faster preprocessing.
++        JPEG: nvJPEG hardware decode on GPU (~20x faster than PIL).
++        PNG/other: cv2 CPU decode + GPU resize (still faster than PIL+processor).
 +        """
 +        import torchvision.io
 +        import torch.nn.functional as F
 +
 +        original_sizes = []
 +        all_tensors = []
-+        for path in jpeg_paths:
-+            with open(path, 'rb') as f:
-+                data = f.read()
-+            jt = torch.frombuffer(bytearray(data), dtype=torch.uint8)
-+            decoded = torchvision.io.decode_jpeg(jt, device=self._device)  # (3, H, W) uint8
++        for path in image_paths:
++            if path.lower().endswith(('.jpg', '.jpeg')):
++                # GPU hardware JPEG decode via nvJPEG
++                with open(path, 'rb') as f:
++                    data = f.read()
++                jt = torch.frombuffer(bytearray(data), dtype=torch.uint8)
++                decoded = torchvision.io.decode_jpeg(jt, device=self._device)  # (3, H, W) uint8
++            else:
++                # CPU decode for PNG/other formats, then transfer to GPU
++                img = cv2.imread(path, cv2.IMREAD_COLOR)
++                img_rgb = img[:, :, ::-1].copy()  # BGR → RGB
++                decoded = torch.from_numpy(img_rgb).permute(2, 0, 1).to(self._device)  # (3, H, W) uint8
 +            _, h, w = decoded.shape
 +            original_sizes.append((w, h))  # (width, height)
 +            resized = F.interpolate(
@@ -58,11 +66,19 @@ index 0a551f2..af3b16b 100644
          save_visualization: bool = False,
          visualization_output_dir: Optional[str] = None,
          global_start_idx: int = 0,
-+        jpeg_paths: Optional[List[str]] = None,
++        image_paths: Optional[List[str]] = None,
      ) -> List[List[Dict]]:
          """Batch-detect layout regions in-process.
  
-@@ -231,28 +262,77 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -224,6 +263,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+             save_visualization: Whether to also save visualization.
+             visualization_output_dir: Where to save visualization outputs.
+             global_start_idx: Start index for visualization filenames (layout_page{N}).
++            image_paths: Optional file paths for fast decode (JPEG: GPU nvJPEG, PNG: cv2).
+ 
+         Returns:
+             List[List[Dict]]: Detection results per image.
+@@ -231,28 +271,77 @@ class PPDocLayoutDetector(BaseLayoutDetector):
          if self._model is None:
              raise RuntimeError("Layout detector not started. Call start() first.")
  
@@ -80,10 +96,10 @@ index 0a551f2..af3b16b 100644
 -            image_batch.append((image_array, image_width, image_height))
  
 -        pil_images = [Image.fromarray(img[0]) for img in image_batch]
-+        # GPU fast path: decode JPEG on GPU and resize there (~20x faster)
++        # Fast path: decode from file paths (JPEG on GPU, PNG via cv2)
 +        _use_gpu_decode = (
-+            jpeg_paths is not None
-+            and len(jpeg_paths) == num_images
++            image_paths is not None
++            and len(image_paths) == num_images
 +            and self._device.startswith("cuda")
 +        )
 +
@@ -93,9 +109,11 @@ index 0a551f2..af3b16b 100644
              chunk_end = min(chunk_start + self.batch_size, num_images)
 -            chunk_pil = pil_images[chunk_start:chunk_end]
 +            _tc0 = _time.time()
-+
+ 
+-            inputs = self._image_processor(images=chunk_pil, return_tensors="pt")
+-            inputs = {k: v.to(self._device) for k, v in inputs.items()}
 +            if _use_gpu_decode:
-+                chunk_paths = jpeg_paths[chunk_start:chunk_end]
++                chunk_paths = image_paths[chunk_start:chunk_end]
 +                pixel_values, chunk_orig_sizes = self._gpu_preprocess_from_paths(
 +                    chunk_paths, _target_h, _target_w,
 +                )
@@ -126,9 +144,7 @@ index 0a551f2..af3b16b 100644
 +                    .div_(255.0)
 +                )
 +                chunk_orig_sizes = original_sizes[chunk_start:chunk_end]
- 
--            inputs = self._image_processor(images=chunk_pil, return_tensors="pt")
--            inputs = {k: v.to(self._device) for k, v in inputs.items()}
++
 +            inputs = {"pixel_values": pixel_values}
 +            if self._device.startswith("cuda"):
 +                torch.cuda.synchronize()
@@ -150,7 +166,7 @@ index 0a551f2..af3b16b 100644
              )
              try:
                  if hasattr(outputs, "pred_boxes") and outputs.pred_boxes is not None:
-@@ -285,13 +365,25 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -285,13 +374,25 @@ class PPDocLayoutDetector(BaseLayoutDetector):
              else:
                  pre_threshold = self.threshold
  
@@ -178,7 +194,7 @@ index 0a551f2..af3b16b 100644
              paddle_format_results = apply_layout_postprocess(
                  raw_results=raw_results,
                  id2label=self.id2label,
-@@ -300,18 +392,22 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -300,18 +401,22 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                  layout_unclip_ratio=self.layout_unclip_ratio,
                  layout_merge_bboxes_mode=self.layout_merge_bboxes_mode,
              )
@@ -202,7 +218,7 @@ index 0a551f2..af3b16b 100644
                  save_filename = f"layout_page{global_start_idx + img_idx}.jpg"
                  save_path = vis_output_path / save_filename
                  save_layout_visualization(
-@@ -324,10 +420,13 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -324,10 +429,13 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                  )
                  saved_vis_paths.append(str(save_path))
  
@@ -218,7 +234,7 @@ index 0a551f2..af3b16b 100644
              results = []
              valid_index = 0
              for item in paddle_results:
-@@ -370,4 +469,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -370,4 +478,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                  valid_index += 1
              all_results.append(results)
  
@@ -227,7 +243,7 @@ index 0a551f2..af3b16b 100644
 +        logger.info(f"Layout process: TOTAL: {_t_norm1 - _t0:.2f}s for {num_images} images")
          return all_results
 diff --git a/glmocr/pipeline/pipeline.py b/glmocr/pipeline/pipeline.py
-index eeeb7b5..2fd7ba1 100644
+index eeeb7b5..d6205b9 100644
 --- a/glmocr/pipeline/pipeline.py
 +++ b/glmocr/pipeline/pipeline.py
 @@ -11,11 +11,13 @@ Extension options:
@@ -305,11 +321,11 @@ index eeeb7b5..2fd7ba1 100644
  
          state = self._create_async_pipeline_state(page_maxsize, region_maxsize)
  
-+        # Build mapping from unit_idx to file path for GPU JPEG decode
++        # Build mapping from unit_idx to file path for fast layout preprocessing & crop
 +        _url_to_path = {}
 +        for unit_idx, url in enumerate(image_urls):
 +            path = url[7:] if url.startswith("file://") else url
-+            if path.lower().endswith(('.jpg', '.jpeg')) and __import__('os').path.isfile(path):
++            if path.lower().endswith(('.jpg', '.jpeg', '.png')) and __import__('os').path.isfile(path):
 +                _url_to_path[unit_idx] = path
 +
          def data_loading_thread() -> None:
@@ -321,7 +337,7 @@ index eeeb7b5..2fd7ba1 100644
                      image_urls
                  ):
                      state.images_dict[img_idx] = page
-+                    # Store JPEG path for GPU-accelerated layout preprocessing
++                    # Store image path for fast layout preprocessing & crop
 +                    if unit_idx in _url_to_path:
 +                        state.image_paths_dict[img_idx] = _url_to_path[unit_idx]
                      state.page_queue.put(("image", img_idx, page))
@@ -413,18 +429,18 @@ index eeeb7b5..2fd7ba1 100644
      ) -> None:
          """Run layout detection on a batch and push regions to queue2."""
 +        _t0 = time.time()
-+        # Collect JPEG paths for GPU-accelerated preprocessing
-+        jpeg_paths = None
++        # Collect image paths for fast preprocessing (JPEG: GPU nvJPEG, PNG: cv2)
++        image_paths = None
 +        if _state is not None and _state.image_paths_dict:
 +            paths = [_state.image_paths_dict.get(idx) for idx in batch_indices]
 +            if all(p is not None for p in paths):
-+                jpeg_paths = paths
++                image_paths = paths
          layout_results = self.layout_detector.process(
              batch_images,
              save_visualization=save_visualization and vis_output_dir is not None,
              visualization_output_dir=vis_output_dir,
              global_start_idx=global_start_idx,
-+            jpeg_paths=jpeg_paths,
++            image_paths=image_paths,
          )
 +        # Pre-convert images to numpy once to avoid repeated np.asarray in crop.
 +        # Use cv2.imread for JPEG files (~3x faster than PIL lazy decode).
