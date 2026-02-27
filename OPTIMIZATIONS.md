@@ -642,6 +642,29 @@ if (w_bar, h_bar) != (w, h):
 
 > FP8 + prefix caching 이미 적용 확인. chunked prefill 활성화와 GPU 메모리 활용률 증가만 남음.
 
+### GPU 포화도 테스트 (실측, `benchmark_vllm_saturation.py`, B200)
+
+**512 요청, 256 동시 워커:**
+
+| 지표 | 값 |
+|------|-----|
+| Throughput | **24.6 req/s**, 172 tok/s |
+| Latency p50 / p95 | 4,198ms / 19,139ms |
+| GPU SM% peak / avg | **22%** / ~10% |
+| 모델 메모리 | 1.34 GB (B200 183GB의 0.7%) |
+| Prefix cache hit | **91.2%** (364K 토큰 중 332K 캐시) |
+| MM cache hit | **93.6%** (이미지 인코더 캐시) |
+| 평균 생성 토큰 | 17 tok/req |
+| 실제 연산 토큰 | 31,985 (전체의 8.8%) |
+
+**SM 22% 원인:**
+1. 모델이 ~1.3GB로 B200의 160 SMs를 채울 수 없음
+2. Prefix caching 91% 히트 → 실제 연산 8.8%만 수행
+3. 생성 평균 17 토큰으로 decode 시간 극소
+4. `--no-enable-chunked-prefill`로 이미지 prefill 순차 처리
+
+> **결론:** "비효율"이 아닌 "모델 대비 GPU 과잉 스펙 + 캐시 최적화 성공". 텐서코어 100%에는 7B+ 모델 필요.
+
 ### 변경 사항
 
 | 파일 | 변경 |
