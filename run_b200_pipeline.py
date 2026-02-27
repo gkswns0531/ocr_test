@@ -56,7 +56,7 @@ VLLM_LOG = Path("/tmp/vllm_glm_b200.log")
 VLLM_PORT = 8000
 
 # Embedding model defaults
-DEFAULT_EMBEDDING_MODEL = "Qwen/Qwen3-VL-Embedding-2B-FP8"
+DEFAULT_EMBEDDING_MODEL = "Forturne/Qwen3-VL-Embedding-2B-FP8"
 DEFAULT_MAX_PIXELS = 1_843_200
 
 # Text extraction limits
@@ -270,6 +270,70 @@ def process_ocr_to_texts(
     return parsed
 
 
+def extract_region_items(ocr_results_path: Path) -> list[dict]:
+    """Extract image/chart regions with associated figure_title/vision_footnote text.
+
+    For each image/chart region, searches ±3 neighboring regions for figure_title
+    and vision_footnote labels and combines their content as caption text.
+
+    Returns list of dicts: {page_id, region_index, crop_path, caption_text, label}
+    """
+    items: list[dict] = []
+    with open(ocr_results_path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            page_id = record["page_id"]
+            regions = record.get("regions", [])
+            crops_map: dict[int, dict] = {}
+            for crop in record.get("image_crops", []):
+                if crop.get("saved"):
+                    crops_map[crop["index"]] = crop
+
+            for i, r in enumerate(regions):
+                native_label = r.get("native_label", "")
+                if native_label not in ("image", "chart"):
+                    continue
+
+                region_index = r.get("index", i)
+
+                # Collect caption text from ±3 neighbors
+                caption_parts: list[str] = []
+                window_start = max(0, i - 3)
+                window_end = min(len(regions), i + 4)
+                for j in range(window_start, window_end):
+                    if j == i:
+                        continue
+                    neighbor = regions[j]
+                    neighbor_native = neighbor.get("native_label", "")
+                    if neighbor_native in ("figure_title", "vision_footnote"):
+                        text = (neighbor.get("content") or "").strip()
+                        if text:
+                            caption_parts.append(text)
+
+                caption_text = "\n".join(caption_parts)
+
+                # Resolve crop path
+                crop_info = crops_map.get(region_index)
+                crop_path = crop_info["path"] if crop_info else ""
+
+                items.append({
+                    "page_id": page_id,
+                    "region_index": region_index,
+                    "crop_path": crop_path,
+                    "caption_text": caption_text,
+                    "label": native_label,
+                })
+
+    return items
+
+
 # ===========================================================================
 # Image resize (from src/data_loader.py)
 # ===========================================================================
@@ -396,7 +460,7 @@ def create_patched_config(port: int, workers: int, batch_size: int) -> str:
     text = text.replace("api_port: 5002", f"api_port: {port}")
     text = text.replace("port: 5002", f"port: {port}")
     text = text.replace("level: INFO", "level: INFO")
-    text = text.replace("max_tokens: 4096", "max_tokens: 16384")
+    text = text.replace("max_tokens: 4096", "max_tokens: 8192")
     # Use regex for robust replacement of max_workers regardless of current value
     text = re.sub(r"max_workers:\s*\d+", f"max_workers: {workers}", text)
     # Layout batch_size (only the one under layout: section)
@@ -446,7 +510,7 @@ class VLEmbeddingModel:
         kwargs = {
             "model": model_cfg.model_id,
             "runner": "pooling",
-            "max_model_len": 4096,
+            "max_model_len": 8192,
             "trust_remote_code": True,
         }
         if model_cfg.quantization:
@@ -489,6 +553,41 @@ class VLEmbeddingModel:
         norms = np.linalg.norm(embs, axis=1, keepdims=True)
         norms = np.clip(norms, 1e-8, None)
         return embs / norms
+
+    def _build_multimodal_input(self, img: Image.Image, text: str, instruction: str) -> dict:
+        """Build a vLLM input dict for image+text multimodal embedding."""
+        content: list[dict] = [{"type": "image"}]
+        if text:
+            content.append({"type": "text", "text": text})
+        msg = [
+            {"role": "system", "content": [{"type": "text", "text": instruction}]},
+            {"role": "user", "content": content},
+        ]
+        prompt = self.processor.apply_chat_template(
+            msg, tokenize=False, add_generation_prompt=True,
+        )
+        return {"prompt": prompt, "multi_modal_data": {"image": img}}
+
+    def encode_multimodal(
+        self,
+        items: list[tuple[Image.Image, str]],
+        batch_size: int | None = None,
+        instruction: str = IMAGE_INSTRUCTION,
+    ) -> np.ndarray:
+        """Encode (image, text) pairs into single embeddings."""
+        bs = batch_size or self.model_cfg.batch_size_image
+        all_embeddings: list[np.ndarray] = []
+
+        for start in tqdm(range(0, len(items), bs), desc="Encoding multimodal"):
+            batch = items[start : start + bs]
+            inputs = [self._build_multimodal_input(img, text, instruction) for img, text in batch]
+            outputs = self.llm.embed(inputs)
+            emb = self._extract_embeddings(outputs)
+            all_embeddings.append(emb)
+            del inputs, outputs
+            _release_memory()
+
+        return np.concatenate(all_embeddings, axis=0)
 
     def encode_images_lazy(
         self,
@@ -720,7 +819,7 @@ def step_start_vllm_server(
         "--served-model-name", "glm-ocr",
         "--port", str(port),
         "--gpu-memory-utilization", str(gpu_mem_util),
-        "--max-model-len", "32768",
+        "--max-model-len", "131072",
         "--max-num-batched-tokens", "65536",
         "--max-num-seqs", "1024",
         "--trust-remote-code",
@@ -1229,42 +1328,50 @@ def step_compute_embeddings(
 
     model = VLEmbeddingModel(model_cfg)
 
-    # 6b. Image embeddings (lazy loading) — only for pages in OCR results
-    corpus_images_path = EMBEDDINGS_DIR / "corpus_images.npy"
-    if corpus_images_path.exists():
-        print(f"  Skipping image embeddings (already exists: {corpus_images_path})")
+    # 6b. Region multimodal embeddings (image+text → single vector)
+    corpus_regions_path = EMBEDDINGS_DIR / "corpus_regions.npy"
+    region_metadata_path = EMBEDDINGS_DIR / "region_metadata.jsonl"
+    if corpus_regions_path.exists():
+        print(f"  Skipping region embeddings (already exists: {corpus_regions_path})")
     else:
-        print("  Computing image embeddings...")
-        from datasets import load_dataset
+        print("  Extracting image/chart regions from OCR results...")
+        region_items = extract_region_items(OCR_RESULTS_FILE)
+        print(f"  Found {len(region_items)} image/chart regions")
 
-        corpus_ds = load_dataset(
-            DATASET_ID,
-            name="SDS-KoPub-corpus",
-            cache_dir=str(cache_dir),
-            split="test",
-        )
+        if not region_items:
+            print("  WARNING: No image/chart regions found. Skipping region embeddings.")
+        else:
+            # Load crop images and pair with caption text
+            multimodal_pairs: list[tuple[Image.Image, str]] = []
+            valid_items: list[dict] = []
+            for item in region_items:
+                crop_path = item["crop_path"]
+                if not crop_path or not Path(crop_path).exists():
+                    print(f"  WARNING: Crop not found for {item['page_id']} region {item['region_index']}, skipping")
+                    continue
+                img = resize_to_max_pixels(Image.open(crop_path).convert("RGB"))
+                multimodal_pairs.append((img, item["caption_text"]))
+                valid_items.append(item)
 
-        # Map page_ids from OCR results to dataset indices
-        ds_ids = corpus_ds["id"]
-        id_to_idx = {str(pid): i for i, pid in enumerate(ds_ids)}
-        embed_indices = [id_to_idx[pid] for pid in page_ids if pid in id_to_idx]
-        n_embed = len(embed_indices)
-        print(f"  Embedding {n_embed} images (matching OCR results)")
+            if not multimodal_pairs:
+                print("  WARNING: No valid crop images found. Skipping region embeddings.")
+            else:
+                print(f"  Computing multimodal embeddings for {len(multimodal_pairs)} regions...")
+                region_embs = model.encode_multimodal(
+                    multimodal_pairs,
+                    batch_size=batch_size_image,
+                )
+                np.save(str(corpus_regions_path), region_embs)
+                print(f"  Saved: {corpus_regions_path} (shape={region_embs.shape})")
 
-        def image_loader(indices: list[int]) -> list[Image.Image]:
-            real_indices = [embed_indices[i] for i in indices]
-            rows = corpus_ds.select(real_indices)
-            return [resize_to_max_pixels(row["image"]) for row in rows]
+                # Save region metadata
+                with open(region_metadata_path, "w", encoding="utf-8") as f:
+                    for item in valid_items:
+                        f.write(json.dumps(item, ensure_ascii=False) + "\n")
+                print(f"  Saved: {region_metadata_path} ({len(valid_items)} entries)")
 
-        image_embs = model.encode_images_lazy(
-            total=n_embed,
-            image_loader=image_loader,
-            batch_size=batch_size_image,
-        )
-        np.save(str(corpus_images_path), image_embs)
-        print(f"  Saved: {corpus_images_path} (shape={image_embs.shape})")
-        del image_embs, corpus_ds, embed_indices
-        _release_memory()
+                del region_embs, multimodal_pairs
+                _release_memory()
 
     # 6c. OCR text embeddings
     corpus_text_path = EMBEDDINGS_DIR / "corpus_ocr_text.npy"
@@ -1360,7 +1467,7 @@ def step_upload_to_hf(hf_repo: str, hf_token: str) -> None:
             print(f"  Skipping {remote_name} (not found)")
 
     # Upload embeddings
-    for npy_name in ["corpus_images.npy", "corpus_ocr_text.npy", "queries.npy"]:
+    for npy_name in ["corpus_regions.npy", "corpus_ocr_text.npy", "queries.npy"]:
         npy_path = EMBEDDINGS_DIR / npy_name
         if npy_path.exists():
             size_mb = npy_path.stat().st_size / 1e6
@@ -1373,6 +1480,18 @@ def step_upload_to_hf(hf_repo: str, hf_token: str) -> None:
             )
         else:
             print(f"  Skipping embeddings/{npy_name} (not found)")
+
+    # Upload region metadata
+    region_meta_path = EMBEDDINGS_DIR / "region_metadata.jsonl"
+    if region_meta_path.exists():
+        size_mb = region_meta_path.stat().st_size / 1e6
+        print(f"  Uploading embeddings/region_metadata.jsonl ({size_mb:.1f} MB)...")
+        api.upload_file(
+            path_or_fileobj=str(region_meta_path),
+            path_in_repo="embeddings/region_metadata.jsonl",
+            repo_id=hf_repo,
+            repo_type="dataset",
+        )
 
     # Upload crops directory (as tar.gz if it exists and has files)
     if CROPS_DIR.exists():
@@ -1406,7 +1525,7 @@ def _generate_readme(hf_repo: str) -> str:
             ocr_count = sum(1 for _ in f)
 
     emb_shapes = {}
-    for name in ["corpus_images", "corpus_ocr_text", "queries"]:
+    for name in ["corpus_regions", "corpus_ocr_text", "queries"]:
         p = EMBEDDINGS_DIR / f"{name}.npy"
         if p.exists():
             arr = np.load(str(p), mmap_mode="r")
@@ -1442,7 +1561,8 @@ corpus ({ocr_count:,} Korean public document pages).
 |------|-------------|------|
 | `ocr_results.jsonl` | GLM-OCR structured layout results (regions, markdown, bbox, labels) | {ocr_count:,} records |
 | `parsed_texts.jsonl` | Extracted text per page (embedding input) | {ocr_count:,} records |
-| `embeddings/corpus_images.npy` | Page image embeddings | {emb_shapes.get('corpus_images', 'N/A')} |
+| `embeddings/corpus_regions.npy` | Region multimodal embeddings (image+caption) | {emb_shapes.get('corpus_regions', 'N/A')} |
+| `embeddings/region_metadata.jsonl` | Region metadata (page_id, caption, label) | — |
 | `embeddings/corpus_ocr_text.npy` | OCR text embeddings | {emb_shapes.get('corpus_ocr_text', 'N/A')} |
 | `embeddings/queries.npy` | Query embeddings | {emb_shapes.get('queries', 'N/A')} |
 | `crops.tar.gz` | Image/chart region crops | {crop_count:,} images |
@@ -1482,12 +1602,13 @@ with open(path) as f:
     records = [json.loads(line) for line in f]
 
 # Load embeddings
-img_emb = np.load(hf_hub_download("{hf_repo}", "embeddings/corpus_images.npy", repo_type="dataset"))
+reg_emb = np.load(hf_hub_download("{hf_repo}", "embeddings/corpus_regions.npy", repo_type="dataset"))
 txt_emb = np.load(hf_hub_download("{hf_repo}", "embeddings/corpus_ocr_text.npy", repo_type="dataset"))
 q_emb = np.load(hf_hub_download("{hf_repo}", "embeddings/queries.npy", repo_type="dataset"))
 
 # Retrieval: cosine similarity (embeddings are L2-normalized)
-scores = q_emb @ img_emb.T  # (num_queries, num_pages)
+scores_text = q_emb @ txt_emb.T    # (num_queries, num_pages)
+scores_region = q_emb @ reg_emb.T  # (num_queries, num_regions)
 ```
 
 ## Pipeline
