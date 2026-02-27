@@ -49,7 +49,7 @@ index 61362af..85ade39 100644
              "temperature": self.temperature,
              "top_p": self.top_p,
 diff --git a/glmocr/layout/layout_detector.py b/glmocr/layout/layout_detector.py
-index 0a551f2..63a2f5d 100644
+index 0a551f2..30bf311 100644
 --- a/glmocr/layout/layout_detector.py
 +++ b/glmocr/layout/layout_detector.py
 @@ -6,6 +6,7 @@ from __future__ import annotations
@@ -99,7 +99,7 @@ index 0a551f2..63a2f5d 100644
  
      def stop(self):
          """Unload model and processor."""
-@@ -166,8 +185,8 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -166,9 +185,10 @@ class PPDocLayoutDetector(BaseLayoutDetector):
      ) -> Dict:
          """Run model + post_process for a single image. Raises on error."""
          single_inputs = self._image_processor(images=[image], return_tensors="pt")
@@ -108,9 +108,35 @@ index 0a551f2..63a2f5d 100644
 +        single_inputs = {k: v.to(self._device, dtype=self._model_dtype) for k, v in single_inputs.items()}
 +        with torch.inference_mode():
              single_outputs = self._model(**single_inputs)
++        self._outputs_to_float32(single_outputs)
          single_target = torch.tensor([image.size[::-1]], device=self._device)
          single_raw = self._image_processor.post_process_object_detection(
-@@ -210,12 +229,51 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+             single_outputs,
+@@ -177,6 +197,14 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+         )
+         return single_raw[0]
+ 
++    @staticmethod
++    def _outputs_to_float32(outputs) -> None:
++        """Cast model outputs to float32 in-place for post_process compatibility."""
++        for attr in ("logits", "pred_boxes", "pred_masks", "out_masks"):
++            t = getattr(outputs, attr, None)
++            if t is not None and t.dtype != torch.float32:
++                setattr(outputs, attr, t.float())
++
+     def _post_process_chunk_with_fallback(
+         self,
+         chunk_pil: List[Image.Image],
+@@ -186,6 +214,8 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+         chunk_start: int,
+     ) -> List[Dict]:
+         """Run batch post_process; on failure, retry image-by-image."""
++        # HuggingFace post_process_object_detection requires FP32
++        self._outputs_to_float32(outputs)
+         try:
+             return self._image_processor.post_process_object_detection(
+                 outputs,
+@@ -210,12 +240,51 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                  raw_results.append(self._empty_detection_result())
          return raw_results
  
@@ -162,7 +188,7 @@ index 0a551f2..63a2f5d 100644
      ) -> List[List[Dict]]:
          """Batch-detect layout regions in-process.
  
-@@ -224,6 +282,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -224,6 +293,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
              save_visualization: Whether to also save visualization.
              visualization_output_dir: Where to save visualization outputs.
              global_start_idx: Start index for visualization filenames (layout_page{N}).
@@ -170,7 +196,7 @@ index 0a551f2..63a2f5d 100644
  
          Returns:
              List[List[Dict]]: Detection results per image.
-@@ -231,28 +290,76 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -231,28 +301,76 @@ class PPDocLayoutDetector(BaseLayoutDetector):
          if self._model is None:
              raise RuntimeError("Layout detector not started. Call start() first.")
  
@@ -201,7 +227,9 @@ index 0a551f2..63a2f5d 100644
              chunk_end = min(chunk_start + self.batch_size, num_images)
 -            chunk_pil = pil_images[chunk_start:chunk_end]
 +            _tc0 = _time.time()
-+
+ 
+-            inputs = self._image_processor(images=chunk_pil, return_tensors="pt")
+-            inputs = {k: v.to(self._device) for k, v in inputs.items()}
 +            if _use_gpu_decode:
 +                chunk_paths = image_paths[chunk_start:chunk_end]
 +                pixel_values, chunk_orig_sizes = self._gpu_preprocess_from_paths(
@@ -234,16 +262,14 @@ index 0a551f2..63a2f5d 100644
 +                )
 +                chunk_orig_sizes = original_sizes[chunk_start:chunk_end]
  
--            inputs = self._image_processor(images=chunk_pil, return_tensors="pt")
--            inputs = {k: v.to(self._device) for k, v in inputs.items()}
+-            with torch.no_grad():
 +            inputs = {"pixel_values": pixel_values}
 +            if self._device.startswith("cuda"):
 +                torch.cuda.synchronize()
 +            _tc1 = _time.time()
 +            logger.info(f"Layout process: preprocess {chunk_end - chunk_start} imgs: {_tc1 - _tc0:.2f}s" +
 +                        (" [GPU decode]" if _use_gpu_decode else " [CPU cv2]"))
- 
--            with torch.no_grad():
++
 +            with torch.inference_mode():
                  outputs = self._model(**inputs)
 +            if self._device.startswith("cuda"):
@@ -258,7 +284,7 @@ index 0a551f2..63a2f5d 100644
              )
              try:
                  if hasattr(outputs, "pred_boxes") and outputs.pred_boxes is not None:
-@@ -285,13 +392,25 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -285,13 +403,25 @@ class PPDocLayoutDetector(BaseLayoutDetector):
              else:
                  pre_threshold = self.threshold
  
@@ -286,7 +312,7 @@ index 0a551f2..63a2f5d 100644
              paddle_format_results = apply_layout_postprocess(
                  raw_results=raw_results,
                  id2label=self.id2label,
-@@ -300,18 +419,22 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -300,18 +430,22 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                  layout_unclip_ratio=self.layout_unclip_ratio,
                  layout_merge_bboxes_mode=self.layout_merge_bboxes_mode,
              )
@@ -310,7 +336,7 @@ index 0a551f2..63a2f5d 100644
                  save_filename = f"layout_page{global_start_idx + img_idx}.jpg"
                  save_path = vis_output_path / save_filename
                  save_layout_visualization(
-@@ -324,10 +447,13 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -324,10 +458,13 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                  )
                  saved_vis_paths.append(str(save_path))
  
@@ -326,7 +352,7 @@ index 0a551f2..63a2f5d 100644
              results = []
              valid_index = 0
              for item in paddle_results:
-@@ -370,4 +496,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
+@@ -370,4 +507,7 @@ class PPDocLayoutDetector(BaseLayoutDetector):
                  valid_index += 1
              all_results.append(results)
  

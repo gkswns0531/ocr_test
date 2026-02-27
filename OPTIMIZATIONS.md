@@ -673,6 +673,61 @@ if (w_bar, h_bar) != (w, h):
 
 ---
 
+## OPT-010: BFloat16 post-process 호환성 수정 (Critical Bugfix)
+
+**날짜**: 2026-02-27
+**대상**: SDK `layout_detector.py`
+
+### 문제
+
+OPT-007에서 layout 모델을 BF16으로 캐스팅했으나, HuggingFace `post_process_object_detection()`이
+BF16 텐서를 지원하지 않아 **전체 layout 검출 실패**:
+
+```
+Layout post_process failed for image N in chunk: Got unsupported ScalarType BFloat16
+```
+
+- 128페이지 테스트: 64/64 이미지 layout 실패 → VLM에 전달할 영역 없음 → 사실상 빈 결과
+- 총 253s (0.5 pages/s), VLM이 할 일 없어 빠르게 끝남 (실제로는 아무것도 안 함)
+
+### 수정
+
+```python
+@staticmethod
+def _outputs_to_float32(outputs) -> None:
+    """Cast model outputs to float32 in-place for post_process compatibility."""
+    for attr in ("logits", "pred_boxes", "pred_masks", "out_masks"):
+        t = getattr(outputs, attr, None)
+        if t is not None and t.dtype != torch.float32:
+            setattr(outputs, attr, t.float())
+```
+
+- `_post_process_chunk_with_fallback()`: 배치 경로에서 post_process 전 FP32 캐스팅
+- `_run_detection_single_image()`: 단일 이미지 fallback 경로에서도 동일 적용
+- 모델 추론은 BF16 유지 (OPT-007의 성능 이점 보존), 출력만 FP32 변환
+
+### 수정 후 전체 파이프라인 결과 (128 pages)
+
+| 지표 | Before (BF16 bug) | After (fixed) |
+|------|-------------------|---------------|
+| Layout 에러 | 64/64 실패 | **0 에러** |
+| 총 소요 시간 | 253s (0.5 p/s) | **186s (0.7 p/s)** |
+| Layout batch 1 (torch.compile warmup) | 237.1s | **62.2s (1.0 img/s)** |
+| Layout batch 2 | 13.2s | **29.1s (2.2 img/s)** |
+| VLM 인식 | ~0s (처리할 영역 없음) | **184.8s** |
+| GPU SM% | 0% | **avg=11%, max=98%** |
+| VRAM 사용량 | — | **avg=159.7GB, max=166.3GB / 192GB** |
+
+> 40K 페이지 예상 소요: ~16시간 (0.7 pages/s 기준)
+
+### 변경 사항
+
+| 파일 | 변경 |
+|------|------|
+| SDK `layout_detector.py` | `_outputs_to_float32()` 추가, 배치/단일 경로 적용 |
+
+---
+
 ## 향후 검토 대상
 
 - [x] ~~Stage 1: Data Loading — 검토 완료, 최적화 불필요 (OPT-005)~~
@@ -681,4 +736,5 @@ if (w_bar, h_bar) != (w, h):
 - [x] ~~Stage 3: VLM 요청 빌드 — 이중 인코딩 제거 + 병렬화 (OPT-008)~~
 - [x] ~~Stage 3: Crop — GPU 크롭 검토 → 최적화 불필요~~
 - [x] ~~Stage 4: VLM — 분석 완료, SDK 최적화 적용 + 서버 튜닝 권장 (OPT-009)~~
+- [x] ~~OPT-010: BF16 post-process 호환성 수정 (Critical Bugfix)~~
 - [ ] 전체: NVIDIA DALI 통합 검토
