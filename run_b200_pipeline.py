@@ -81,6 +81,71 @@ def _release_memory() -> None:
         pass
 
 
+class GPUMonitor:
+    """Background GPU monitoring via pynvml + nvidia-smi dmon."""
+
+    def __init__(self, interval: float = 0.5):
+        import threading
+        self.interval = interval
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self.samples: list[dict] = []
+
+    def start(self) -> "GPUMonitor":
+        import threading
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        self._thread.start()
+        return self
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=3)
+
+    def _monitor_loop(self) -> None:
+        try:
+            import pynvml
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+        except Exception:
+            return
+        while not self._stop.is_set():
+            try:
+                mem = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+                self.samples.append({
+                    "t": time.time(),
+                    "vram_used_gb": mem.used / 1e9,
+                    "vram_total_gb": mem.total / 1e9,
+                    "gpu_util_pct": util.gpu,
+                    "mem_bw_util_pct": util.memory,
+                })
+            except Exception:
+                pass
+            self._stop.wait(self.interval)
+
+    def summary(self) -> dict:
+        if not self.samples:
+            return {}
+        import statistics
+        gpu_utils = [s["gpu_util_pct"] for s in self.samples]
+        mem_bw = [s["mem_bw_util_pct"] for s in self.samples]
+        vram = [s["vram_used_gb"] for s in self.samples]
+        return {
+            "n_samples": len(self.samples),
+            "duration_s": self.samples[-1]["t"] - self.samples[0]["t"] if len(self.samples) > 1 else 0,
+            "gpu_util_avg": statistics.mean(gpu_utils),
+            "gpu_util_max": max(gpu_utils),
+            "gpu_util_p50": statistics.median(gpu_utils),
+            "mem_bw_util_avg": statistics.mean(mem_bw),
+            "mem_bw_util_max": max(mem_bw),
+            "vram_used_avg_gb": statistics.mean(vram),
+            "vram_used_max_gb": max(vram),
+            "vram_total_gb": self.samples[0]["vram_total_gb"],
+        }
+
+
 def ensure_dir(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
@@ -314,7 +379,9 @@ def page_result_to_record(
 
 def create_patched_config(port: int, workers: int, batch_size: int) -> str:
     """Create a patched GLM-OCR config with custom port/workers/batch_size."""
-    sdk_config = Path("/home/ubuntu/glm-ocr-sdk/glmocr/config.yaml")
+    sdk_config = Path("/root/glm-ocr-sdk/glmocr/config.yaml")
+    if not sdk_config.exists():
+        sdk_config = Path("/home/ubuntu/glm-ocr-sdk/glmocr/config.yaml")
     if not sdk_config.exists():
         import glmocr
         sdk_config = Path(glmocr.__file__).parent / "config.yaml"
@@ -328,10 +395,20 @@ def create_patched_config(port: int, workers: int, batch_size: int) -> str:
     text = text.replace("api_port: 8080", f"api_port: {port}")
     text = text.replace("api_port: 5002", f"api_port: {port}")
     text = text.replace("port: 5002", f"port: {port}")
-    text = text.replace("level: INFO", "level: WARNING")
+    text = text.replace("level: INFO", "level: INFO")
     text = text.replace("max_tokens: 4096", "max_tokens: 16384")
-    text = text.replace("max_workers: 32", f"max_workers: {workers}")
-    text = text.replace("batch_size: 1", f"batch_size: {batch_size}")
+    # Use regex for robust replacement of max_workers regardless of current value
+    text = re.sub(r"max_workers:\s*\d+", f"max_workers: {workers}", text)
+    # Layout batch_size (only the one under layout: section)
+    text = re.sub(r"(layout:.*?batch_size:)\s*\d+", rf"\g<1> {batch_size}", text, flags=re.DOTALL)
+    # Connection pool must be >= max_workers
+    pool_size = max(workers + 32, 256)
+    text = re.sub(r"connection_pool_size:\s*\d+", f"connection_pool_size: {pool_size}", text)
+    # Increase queue sizes to handle high parallelism
+    text = re.sub(r"page_maxsize:\s*\d+", f"page_maxsize: 500", text)
+    text = re.sub(r"region_maxsize:\s*\d+", f"region_maxsize: {max(workers * 20, 5000)}", text)
+    # Decrease temperature for more deterministic OCR
+    text = text.replace("temperature: 0.8", "temperature: 0.1")
     cfg_path.write_text(text)
     return str(cfg_path)
 
@@ -487,10 +564,10 @@ Examples:
     p.add_argument("--resume", action="store_true", help="Resume interrupted OCR (skip processed pages)")
 
     # B200-optimized defaults
-    p.add_argument("--batch-size", type=int, default=8, help="Layout model batch size (default: 8 for B200)")
-    p.add_argument("--workers", type=int, default=128, help="VLM parallel workers (default: 128 for B200)")
+    p.add_argument("--batch-size", type=int, default=64, help="Layout model batch size (default: 64 for B200)")
+    p.add_argument("--workers", type=int, default=256, help="VLM parallel workers (default: 256 for B200)")
     p.add_argument("--port", type=int, default=VLLM_PORT, help="vLLM server port")
-    p.add_argument("--gpu-mem-util", type=float, default=0.80, help="vLLM GPU memory utilization (default: 0.80)")
+    p.add_argument("--gpu-mem-util", type=float, default=0.80, help="vLLM GPU memory utilization (default: 0.80, leaves room for layout model)")
     p.add_argument("--no-crops", action="store_true", help="Skip saving image/chart crops")
     p.add_argument(
         "--ocr-dtype",
@@ -512,6 +589,9 @@ Examples:
     # HuggingFace upload
     p.add_argument("--hf-repo", type=str, default=None, help="HuggingFace dataset repo ID (e.g. user/repo)")
     p.add_argument("--hf-token", type=str, default=None, help="HuggingFace API token")
+
+    # Limit (for testing)
+    p.add_argument("--limit", type=int, default=0, help="Process only first N pages (0 = all, for testing)")
 
     # Output
     p.add_argument("--output-dir", type=str, default=str(OUTPUT_DIR), help="Output directory")
@@ -640,11 +720,11 @@ def step_start_vllm_server(
         "--served-model-name", "glm-ocr",
         "--port", str(port),
         "--gpu-memory-utilization", str(gpu_mem_util),
-        "--max-model-len", "131072",
-        "--max-num-batched-tokens", "16384",
+        "--max-model-len", "32768",
+        "--max-num-batched-tokens", "131072",
+        "--max-num-seqs", "512",
         "--trust-remote-code",
-        "--no-enable-prefix-caching",
-        "--mm-processor-cache-gb", "0",
+        "--no-enable-chunked-prefill",
     ]
 
     # Dtype / quantization
@@ -709,11 +789,14 @@ def step_ocr_parsing(
     batch_size: int,
     do_crops: bool,
     resume: bool,
+    limit: int = 0,
 ) -> None:
     """Run GLM-OCR on all 40K pages → ocr_results.jsonl + crops/."""
     print("\n" + "=" * 60)
     print("Step 4: OCR Parsing")
     print("=" * 60)
+    if limit > 0:
+        print(f"  LIMIT: Processing only first {limit} pages")
 
     ensure_dir(OUTPUT_DIR)
     if do_crops:
@@ -735,9 +818,9 @@ def step_ocr_parsing(
 
     # Load dataset: either from Arrow shards or HF API
     if arrow_dir and arrow_dir.exists():
-        _ocr_from_arrow_shards(ocr, arrow_dir, processed_ids, batch_size, do_crops)
+        _ocr_from_arrow_shards(ocr, arrow_dir, processed_ids, batch_size, do_crops, limit)
     else:
-        _ocr_from_hf_dataset(ocr, cache_dir, processed_ids, batch_size, do_crops)
+        _ocr_from_hf_dataset(ocr, cache_dir, processed_ids, batch_size, do_crops, limit)
 
     ocr.close()
     print("  OCR parsing complete!")
@@ -749,6 +832,7 @@ def _ocr_from_arrow_shards(
     processed_ids: set[str],
     batch_size: int,
     do_crops: bool,
+    limit: int = 0,
 ) -> None:
     """Process pages from Arrow shard files."""
     from datasets import Dataset
@@ -762,6 +846,8 @@ def _ocr_from_arrow_shards(
         ds = Dataset.from_file(str(arrow_dir / af))
         total_pages += len(ds)
         del ds
+    if limit > 0:
+        total_pages = min(total_pages, limit)
     print(f"  Total pages: {total_pages}")
 
     global_idx = 0
@@ -777,6 +863,11 @@ def _ocr_from_arrow_shards(
             shard_size = len(ds)
             ids = ds["id"]
 
+            # Check limit
+            if limit > 0 and pages_processed + pages_skipped >= limit:
+                del ds
+                break
+
             # Collect pending indices
             pending_indices: list[int] = []
             pending_page_ids: list[str] = []
@@ -786,6 +877,15 @@ def _ocr_from_arrow_shards(
                     pending_indices.append(i)
                     pending_page_ids.append(page_id)
 
+            # Apply limit to pending
+            if limit > 0:
+                remaining = limit - pages_processed - pages_skipped
+                if remaining <= 0:
+                    del ds
+                    break
+                pending_indices = pending_indices[:remaining]
+                pending_page_ids = pending_page_ids[:remaining]
+
             if not pending_indices:
                 global_idx += shard_size
                 print(f"  Shard {shard_idx}/{len(arrow_files)}: all done, skipping")
@@ -793,55 +893,49 @@ def _ocr_from_arrow_shards(
                 _release_memory()
                 continue
 
-            print(f"\n  Shard {shard_idx}/{len(arrow_files)}: {len(pending_indices)}/{shard_size} pending")
+            n_pending = len(pending_indices)
+            print(f"\n  Shard {shard_idx}/{len(arrow_files)}: {n_pending}/{shard_size} pending")
 
-            pbar = tqdm(
-                range(0, len(pending_indices), batch_size),
-                desc=f"Shard {shard_idx}",
-                total=(len(pending_indices) + batch_size - 1) // batch_size,
-            )
+            # Start GPU monitoring
+            gpu_mon = GPUMonitor(interval=0.5).start()
 
-            for batch_start in pbar:
-                batch_end = min(batch_start + batch_size, len(pending_indices))
-                batch_local_indices = pending_indices[batch_start:batch_end]
-                batch_page_ids = pending_page_ids[batch_start:batch_end]
+            # Save ALL images to temp files in parallel
+            from concurrent.futures import ThreadPoolExecutor as _TPE
+            t_save_start = time.time()
+            tmp_paths: list[str] = [f"/tmp/ocr_batch_{shard_idx}_{li}.jpg" for li in pending_indices]
 
-                # Save images to temp files
-                tmp_paths: list[str] = []
-                for local_idx in batch_local_indices:
-                    row = ds[local_idx]
-                    tmp_img = f"/tmp/ocr_batch_{shard_idx}_{local_idx}.jpg"
-                    pil_img = row["image"].convert("RGB")
-                    pil_img.save(tmp_img, format="JPEG", quality=95)
-                    del pil_img, row
-                    tmp_paths.append(tmp_img)
-                _release_memory()
+            def _save_img(args: tuple[int, int]) -> None:
+                idx, local_idx = args
+                row = ds[local_idx]
+                pil_img = row["image"].convert("RGB")
+                pil_img.save(tmp_paths[idx], format="JPEG", quality=95)
+                del pil_img, row
 
-                # Run GLM-OCR
-                results = None
-                try:
-                    if len(tmp_paths) == 1:
-                        results = [ocr.parse(tmp_paths[0])]
-                    else:
-                        results = ocr.parse(tmp_paths)
+            with _TPE(max_workers=min(16, n_pending)) as save_exec:
+                list(save_exec.map(_save_img, enumerate(pending_indices)))
+            t_save_end = time.time()
+            print(f"    Image save: {t_save_end - t_save_start:.1f}s ({n_pending} images)")
+            _release_memory()
 
-                    for result, page_id, local_idx, tmp_path in zip(
-                        results, batch_page_ids, batch_local_indices, tmp_paths
-                    ):
+            # Feed ALL images to OCR at once using stream mode
+            t_ocr_start = time.time()
+            t_first_result = None
+            pbar = tqdm(total=n_pending, desc=f"Shard {shard_idx}")
+            try:
+                for i, result in enumerate(ocr.parse(tmp_paths, stream=True, save_layout_visualization=False)):
+                    if t_first_result is None:
+                        t_first_result = time.time()
+                    page_id = pending_page_ids[i]
+                    local_idx = pending_indices[i]
+                    try:
                         record = page_result_to_record(
                             page_id=page_id,
                             page_idx=global_idx + local_idx,
                             result=result,
-                            img_path=tmp_path,
+                            img_path=tmp_paths[i],
                             do_crops=do_crops,
                         )
-                        out_f.write(json.dumps(record, ensure_ascii=False) + "\n")
-                        pages_processed += 1
-                    out_f.flush()
-
-                except Exception as e:
-                    print(f"\n  ERROR in batch: {e}")
-                    for page_id, local_idx in zip(batch_page_ids, batch_local_indices):
+                    except Exception as e:
                         record = {
                             "page_id": page_id,
                             "page_idx": global_idx + local_idx,
@@ -850,26 +944,61 @@ def _ocr_from_arrow_shards(
                             "image_crops": [],
                             "error": str(e),
                         }
-                        out_f.write(json.dumps(record, ensure_ascii=False) + "\n")
-                        pages_processed += 1
-                    out_f.flush()
+                    out_f.write(json.dumps(record, ensure_ascii=False) + "\n")
+                    pages_processed += 1
+                    pbar.update(1)
 
-                # Clean up
-                if results is not None:
-                    del results
-                for tmp in tmp_paths:
-                    try:
-                        os.remove(tmp)
-                    except OSError:
-                        pass
-                _release_memory()
+                    # Progress
+                    elapsed = time.time() - t_start
+                    total_done = pages_processed + pages_skipped
+                    rate = pages_processed / elapsed if elapsed > 0 else 0
+                    eta_h = (total_pages - total_done) / rate / 3600 if rate > 0 else float("inf")
+                    pbar.set_postfix(done=total_done, rate=f"{rate:.1f}/s", eta=f"{eta_h:.1f}h")
+                out_f.flush()
+            except Exception as e:
+                print(f"\n  ERROR in shard: {e}")
+                import traceback; traceback.print_exc()
+            finally:
+                pbar.close()
 
-                # Progress
-                elapsed = time.time() - t_start
-                total_done = pages_processed + pages_skipped
-                rate = pages_processed / elapsed if elapsed > 0 else 0
-                eta_h = (total_pages - total_done) / rate / 3600 if rate > 0 else float("inf")
-                pbar.set_postfix(done=total_done, rate=f"{rate:.1f}/s", eta=f"{eta_h:.1f}h")
+            # Stop GPU monitoring and print timing summary
+            gpu_mon.stop()
+            t_ocr_end = time.time()
+
+            print(f"\n  === Shard {shard_idx} Performance Report ===")
+            print(f"    Image save:     {t_save_end - t_save_start:.1f}s")
+            print(f"    OCR total:      {t_ocr_end - t_ocr_start:.1f}s")
+            if t_first_result:
+                print(f"    Time to first:  {t_first_result - t_ocr_start:.1f}s")
+                print(f"    Streaming:      {t_ocr_end - t_first_result:.1f}s ({n_pending} pages)")
+
+            # SDK internal timings
+            if hasattr(ocr, '_pipeline') and hasattr(ocr._pipeline, 'last_timings'):
+                t = ocr._pipeline.last_timings
+                if t.data_loading_end:
+                    print(f"    [SDK] Data load:  {t.data_loading_end - t.data_loading_start:.1f}s")
+                if t.layout_end:
+                    print(f"    [SDK] Layout:     {t.layout_end - t.layout_start:.1f}s")
+                    for n_imgs, secs in t.layout_batch_times:
+                        print(f"           batch {n_imgs} imgs: {secs:.1f}s ({n_imgs/secs:.1f} img/s)")
+                if t.vlm_end:
+                    print(f"    [SDK] VLM recog:  {t.vlm_end - t.vlm_start:.1f}s")
+
+            # GPU stats
+            gs = gpu_mon.summary()
+            if gs:
+                print(f"    [GPU] SM util:    avg={gs['gpu_util_avg']:.0f}% max={gs['gpu_util_max']}% p50={gs['gpu_util_p50']:.0f}%")
+                print(f"    [GPU] Mem BW:     avg={gs['mem_bw_util_avg']:.0f}% max={gs['mem_bw_util_max']}%")
+                print(f"    [GPU] VRAM used:  avg={gs['vram_used_avg_gb']:.1f}GB max={gs['vram_used_max_gb']:.1f}GB / {gs['vram_total_gb']:.0f}GB")
+            print(f"  ===========================")
+
+            # Clean up temp files
+            for tmp in tmp_paths:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+            _release_memory()
 
             global_idx += shard_size
             del ds
@@ -879,7 +1008,8 @@ def _ocr_from_arrow_shards(
         out_f.close()
 
     elapsed = time.time() - t_start
-    print(f"\n  Processed {pages_processed} new pages in {elapsed/3600:.1f}h")
+    rate = pages_processed / elapsed if elapsed > 0 else 0
+    print(f"\n  Processed {pages_processed} new pages in {elapsed:.0f}s ({rate:.1f} pages/s)")
     print(f"  Total in {OCR_RESULTS_FILE}: {pages_processed + pages_skipped} pages")
 
 
@@ -889,6 +1019,7 @@ def _ocr_from_hf_dataset(
     processed_ids: set[str],
     batch_size: int,
     do_crops: bool,
+    limit: int = 0,
 ) -> None:
     """Process pages from HuggingFace dataset API (fallback when Arrow dir not found)."""
     from datasets import load_dataset
@@ -911,6 +1042,11 @@ def _ocr_from_hf_dataset(
         if page_id not in processed_ids:
             pending_indices.append(i)
             pending_page_ids.append(page_id)
+
+    # Apply limit
+    if limit > 0 and len(pending_indices) > limit:
+        pending_indices = pending_indices[:limit]
+        pending_page_ids = pending_page_ids[:limit]
 
     print(f"  Pending: {len(pending_indices)} pages")
 
@@ -1036,6 +1172,7 @@ def step_compute_embeddings(
     embedding_model_id: str,
     batch_size_image: int,
     batch_size_text: int,
+    limit: int = 0,
 ) -> None:
     """Compute image, text, and query embeddings with Qwen3-VL-Embedding."""
     print("\n" + "=" * 60)
@@ -1078,7 +1215,7 @@ def step_compute_embeddings(
 
     model = VLEmbeddingModel(model_cfg)
 
-    # 6b. Image embeddings (lazy loading)
+    # 6b. Image embeddings (lazy loading) — only for pages in OCR results
     corpus_images_path = EMBEDDINGS_DIR / "corpus_images.npy"
     if corpus_images_path.exists():
         print(f"  Skipping image embeddings (already exists: {corpus_images_path})")
@@ -1093,18 +1230,26 @@ def step_compute_embeddings(
             split="test",
         )
 
+        # Map page_ids from OCR results to dataset indices
+        ds_ids = corpus_ds["id"]
+        id_to_idx = {str(pid): i for i, pid in enumerate(ds_ids)}
+        embed_indices = [id_to_idx[pid] for pid in page_ids if pid in id_to_idx]
+        n_embed = len(embed_indices)
+        print(f"  Embedding {n_embed} images (matching OCR results)")
+
         def image_loader(indices: list[int]) -> list[Image.Image]:
-            rows = corpus_ds.select(indices)
+            real_indices = [embed_indices[i] for i in indices]
+            rows = corpus_ds.select(real_indices)
             return [resize_to_max_pixels(row["image"]) for row in rows]
 
         image_embs = model.encode_images_lazy(
-            total=len(corpus_ds),
+            total=n_embed,
             image_loader=image_loader,
             batch_size=batch_size_image,
         )
         np.save(str(corpus_images_path), image_embs)
         print(f"  Saved: {corpus_images_path} (shape={image_embs.shape})")
-        del image_embs, corpus_ds
+        del image_embs, corpus_ds, embed_indices
         _release_memory()
 
     # 6c. OCR text embeddings
@@ -1361,6 +1506,8 @@ def main() -> None:
     print(f"  GPU mem util: {args.gpu_mem_util}")
     print(f"  OCR dtype: {args.ocr_dtype}")
     print(f"  Embedding model: {args.embedding_model}")
+    if args.limit > 0:
+        print(f"  LIMIT: {args.limit} pages only")
 
     steps = [args.step] if args.step else ["ocr", "embed", "upload"]
 
@@ -1387,6 +1534,7 @@ def main() -> None:
                 batch_size=args.batch_size,
                 do_crops=not args.no_crops,
                 resume=args.resume or (args.step is None),  # auto-resume in full mode
+                limit=args.limit,
             )
 
             # Step 5: Stop vLLM server
@@ -1400,6 +1548,7 @@ def main() -> None:
                 embedding_model_id=args.embedding_model,
                 batch_size_image=args.embed_batch_image,
                 batch_size_text=args.embed_batch_text,
+                limit=args.limit,
             )
 
         if "upload" in steps:
