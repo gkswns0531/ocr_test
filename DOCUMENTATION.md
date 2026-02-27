@@ -934,35 +934,43 @@ output/embeddings/
 ### 11.5 GPU 메모리별 권장 설정
 
 > B200 (192GB) 실측 기반 산출. KV cache 비용: GLM-OCR 64 KB/token, Embedding 112 KB/token.
+> 동시성은 실제 OCR 시퀀스 길이 기준 (~10K tokens/request). `--max-model-len`, `--max-tokens`는 모든 GPU에서 동일.
 
 #### GLM-OCR vLLM 서버
 
-| GPU | dtype | `--max-model-len` | `--max-num-seqs` | `--max-num-batched-tokens` | `--workers` | `--batch-size` | KV 여유 | 동시성 |
-|:----|:------|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
-| **24 GB** (4090) | FP8 | 131072 | 1 | 4096 | 1 | 4 | 13.2 GB | 1.7× |
-| **48 GB** (A6000/L40) | FP8 | 131072 | 4 | 16384 | 4 | 4 | 34.8 GB | 4.4× |
-| **80 GB** (A100/H100) | FP8 | 131072 | 7 | 28672 | 7 | 4 | 63.6 GB | 8.0× |
-| **96 GB** (H100 NVL) | FP8 | 131072 | 9 | 36864 | 9 | 4 | 78.0 GB | 9.8× |
-| **192 GB** (B200) | FP8 | 131072 | 1024 | 65536 | 256 | 64 | 164.4 GB | 20.6× |
+**고정 파라미터** (GPU 무관): `--max-model-len 131072`, `max_tokens=8192`, `--enable-chunked-prefill`
+
+| GPU | dtype | `--max-num-seqs` | `--max-num-batched-tokens` | `--workers` | `--batch-size` | KV 여유 | 동시성 (@10K) |
+|:----|:------|:--:|:--:|:--:|:--:|:--:|:--:|
+| **24 GB** (4090) | FP8 | 21 | 65536 | 84 | 6 | 13.2 GB | 22× |
+| **48 GB** (A6000/L40) | FP8 | 57 | 65536 | 228 | 17 | 34.8 GB | 57× |
+| **80 GB** (A100/H100) | FP8 | 104 | 65536 | 256 | 31 | 63.6 GB | 104× |
+| **96 GB** (H100 NVL) | FP8 | 127 | 65536 | 256 | 39 | 78.0 GB | 128× |
+| **192 GB** (B200) | FP8 | 269 | 65536 | 256 | 64 | 164.4 GB | 269× |
 
 - **모델 weight**: FP8 ~1.4 GB, BF16 ~2.2 GB
 - **activation overhead**: ~7 GB (프로파일링 기준)
-- 24GB GPU에서도 FP8이면 동작 가능하지만 동시성 1.7×로 throughput 매우 낮음
-- 48GB 이상부터 실용적 (concurrent 4+)
+- `--max-num-seqs`: KV cache가 수용 가능한 동시 시퀀스 수 (실 시퀀스 ~10K 기준)
+- `--max-num-batched-tokens`: 65536 고정 (chunked prefill이 알아서 분할)
+- `--workers`: SDK 병렬 요청 스레드 (max_num_seqs × 4, 최대 256)
+- `--batch-size`: PP-DocLayoutV3 레이아웃 모델 배치 (vLLM과 별도)
+- 24GB에서도 동시성 22×로 실용적
 
 #### Qwen3-VL-Embedding
 
-| GPU | dtype | `max_model_len` | `--embed-batch-image` | `--embed-batch-text` | KV 여유 | 동시성 |
-|:----|:------|:--:|:--:|:--:|:--:|:--:|
-| **24 GB** (4090) | FP8 | 8192 | 15 | 30 | 13.2 GB | 15× |
-| **48 GB** (A6000/L40) | FP8 | 8192 | 40 | 32 | 34.8 GB | 40× |
-| **80 GB** (A100/H100) | FP8 | 8192 | 64 | 32 | 63.6 GB | 73× |
-| **96 GB** (H100 NVL) | FP8 | 8192 | 64 | 32 | 78.0 GB | 90× |
-| **192 GB** (B200) | FP8 | 8192 | 64 | 32 | 164.4 GB | 190× |
+**고정 파라미터** (GPU 무관): `max_model_len=8192`, `runner=pooling`
+
+| GPU | dtype | `--embed-batch-image` | `--embed-batch-text` | KV 여유 | 동시성 (@2K) |
+|:----|:------|:--:|:--:|:--:|:--:|
+| **24 GB** (4090) | FP8 | 30 | 32 | 13.2 GB | 62× |
+| **48 GB** (A6000/L40) | FP8 | 64 | 32 | 34.8 GB | 163× |
+| **80 GB** (A100/H100) | FP8 | 64 | 32 | 63.6 GB | 298× |
+| **96 GB** (H100 NVL) | FP8 | 64 | 32 | 78.0 GB | 365× |
+| **192 GB** (B200) | FP8 | 64 | 32 | 164.4 GB | 770× |
 
 - **모델 weight**: FP8 ~1.4 GB, BF16 ~4.4 GB
-- Embedding은 pooling 모드 (generation 없음)이므로 KV 부담이 적음
-- 24GB에서도 batch_size=15로 실용적
+- Embedding은 pooling 모드 (generation 없음), 실 입력 ~2K tokens/request
+- 24GB에서도 batch_size=30으로 충분히 실용적
 
 #### BF16 사용 시 (FP8 미지원 GPU)
 
