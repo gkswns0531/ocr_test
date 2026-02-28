@@ -473,6 +473,8 @@ def create_patched_config(port: int, workers: int, batch_size: int) -> str:
     text = re.sub(r"region_maxsize:\s*\d+", f"region_maxsize: {max(workers * 20, 5000)}", text)
     # Decrease temperature for more deterministic OCR
     text = text.replace("temperature: 0.8", "temperature: 0.1")
+    # Increase VLM request timeout (default 120s can be too short for complex pages)
+    text = re.sub(r"request_timeout:\s*\d+", "request_timeout: 300", text)
     cfg_path.write_text(text)
     return str(cfg_path)
 
@@ -847,6 +849,8 @@ def step_start_vllm_server(
         stderr=subprocess.STDOUT,
         preexec_fn=os.setsid,
     )
+    # Keep log file descriptor alive to prevent GC closing it → SIGPIPE to vLLM
+    proc._log_f = log_f
     print(f"  PID: {proc.pid}, log: {VLLM_LOG}")
 
     # Wait for server to be ready
@@ -874,6 +878,24 @@ def step_start_vllm_server(
     print(f"  Check log: {VLLM_LOG}")
     step_stop_vllm_server(proc)
     sys.exit(1)
+
+
+def _sort_jsonl_by_page_idx(path: Path) -> None:
+    """Sort ocr_results.jsonl by page_idx so line N == dataset[N]."""
+    records: list[str] = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                records.append(line)
+
+    records.sort(key=lambda l: json.loads(l)["page_idx"])
+
+    with open(path, "w", encoding="utf-8") as f:
+        for line in records:
+            f.write(line + "\n")
+
+    print(f"  Sorted {len(records)} records by page_idx in {path.name}")
 
 
 # ===========================================================================
@@ -922,6 +944,11 @@ def step_ocr_parsing(
         _ocr_from_hf_dataset(ocr, cache_dir, processed_ids, batch_size, do_crops, limit)
 
     ocr.close()
+
+    # Sort results by page_idx to ensure file line order == dataset index order.
+    # OCR streaming returns results in completion order, not input order.
+    _sort_jsonl_by_page_idx(OCR_RESULTS_FILE)
+
     print("  OCR parsing complete!")
 
 
@@ -1031,13 +1058,24 @@ def _ocr_from_arrow_shards(
             _release_memory()
 
             # Feed ALL images to OCR at once using stream mode
+            # NOTE: ocr.parse(stream=True) yields results in COMPLETION order,
+            # NOT input order. Use result.original_images[0] to map back.
             t_ocr_start = time.time()
             t_first_result = None
             pbar = tqdm(total=n_pending, desc=f"Shard {shard_idx}")
+            path_to_idx = {os.path.abspath(p): idx for idx, p in enumerate(tmp_paths)}
             try:
-                for i, result in enumerate(ocr.parse(tmp_paths, stream=True, save_layout_visualization=False)):
+                for result in ocr.parse(tmp_paths, stream=True, save_layout_visualization=False):
                     if t_first_result is None:
                         t_first_result = time.time()
+                    # Map result back to correct input via original_images path
+                    orig_path = result.original_images[0] if result.original_images else None
+                    if orig_path and os.path.abspath(orig_path) in path_to_idx:
+                        i = path_to_idx[os.path.abspath(orig_path)]
+                    else:
+                        # Fallback: use sequential counter within this shard
+                        i = pbar.n  # number of results already yielded in this shard
+                        logger.warning("Could not map result to input path, using fallback index %d", i)
                     page_id = pending_page_ids[i]
                     local_idx = pending_indices[i]
                     try:
@@ -1196,9 +1234,20 @@ def _ocr_from_hf_dataset(
                 if len(tmp_paths) == 1:
                     results = [ocr.parse(tmp_paths[0])]
                 else:
+                    # NOTE: ocr.parse() returns results in COMPLETION order,
+                    # NOT input order. Re-order using original_images path.
                     results = ocr.parse(tmp_paths)
 
-                for result, page_id, idx, tmp_path in zip(results, batch_pids, batch_idx, tmp_paths):
+                path_to_batch_idx = {os.path.abspath(p): j for j, p in enumerate(tmp_paths)}
+                for result in results:
+                    orig_path = result.original_images[0] if result.original_images else None
+                    if orig_path and os.path.abspath(orig_path) in path_to_batch_idx:
+                        j = path_to_batch_idx[os.path.abspath(orig_path)]
+                    else:
+                        j = 0  # single-image fallback
+                    page_id = batch_pids[j]
+                    idx = batch_idx[j]
+                    tmp_path = tmp_paths[j]
                     record = page_result_to_record(
                         page_id=page_id,
                         page_idx=idx,
@@ -1314,8 +1363,8 @@ def step_compute_embeddings(
 
     print(f"  Loaded {len(page_ids)} parsed texts")
 
-    # Determine quantization from model name
-    quantization = "fp8" if "FP8" in embedding_model_id.upper() else None
+    # Forturne FP8 models use compressed-tensors (NOT vLLM fp8 quantization flag)
+    quantization = None
 
     model_cfg = EmbeddingModelConfig(
         name="qwen3-vl-embedding",
