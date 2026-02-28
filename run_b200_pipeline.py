@@ -237,8 +237,15 @@ def process_ocr_to_texts(
     ocr_results_path: Path,
     output_path: Path,
 ) -> dict[str, str]:
-    """Process ocr_results.jsonl → parsed_texts.jsonl and return page_id→text mapping."""
-    parsed: dict[str, str] = {}
+    """Process ocr_results.jsonl → parsed_texts.jsonl and return page_id→text mapping.
+
+    IMPORTANT: Preserves JSONL line order (which should be sorted by page_idx).
+    Duplicates are detected and warned about but should not exist after _sort_jsonl_by_page_idx.
+    """
+    page_ids_ordered: list[str] = []
+    texts_ordered: list[str] = []
+    seen_pids: set[str] = set()
+    n_dupes = 0
 
     with open(ocr_results_path, encoding="utf-8") as f:
         lines = f.readlines()
@@ -253,18 +260,33 @@ def process_ocr_to_texts(
             continue
 
         page_id = record["page_id"]
+        if page_id.startswith("__UNMAPPED"):
+            continue  # skip error records from path mapping failures
+
         regions = record.get("regions", [])
         text = extract_page_text(regions)
-        parsed[page_id] = text
+
+        if page_id in seen_pids:
+            n_dupes += 1
+            continue  # skip duplicate (should not happen after sort+dedup)
+        seen_pids.add(page_id)
+        page_ids_ordered.append(page_id)
+        texts_ordered.append(text)
+
+    if n_dupes > 0:
+        print(f"WARNING: {n_dupes} duplicate page_ids found in {ocr_results_path.name}")
+
+    # Build dict for return value (preserves order in Python 3.7+)
+    parsed = dict(zip(page_ids_ordered, texts_ordered))
 
     ensure_dir(output_path.parent)
     with open(output_path, "w", encoding="utf-8") as f:
-        for page_id, text in parsed.items():
+        for page_id, text in zip(page_ids_ordered, texts_ordered):
             f.write(json.dumps({"page_id": page_id, "parsed_text": text}, ensure_ascii=False) + "\n")
 
-    non_empty = sum(1 for t in parsed.values() if t.strip())
-    avg_len = sum(len(t) for t in parsed.values()) / max(len(parsed), 1)
-    print(f"Parsed {len(parsed)} pages: {non_empty} non-empty, avg {avg_len:.0f} chars")
+    non_empty = sum(1 for t in texts_ordered if t.strip())
+    avg_len = sum(len(t) for t in texts_ordered) / max(len(texts_ordered), 1)
+    print(f"Parsed {len(page_ids_ordered)} pages: {non_empty} non-empty, avg {avg_len:.0f} chars")
     print(f"Saved to {output_path}")
 
     return parsed
@@ -290,6 +312,8 @@ def extract_region_items(ocr_results_path: Path) -> list[dict]:
                 continue
 
             page_id = record["page_id"]
+            if page_id.startswith("__UNMAPPED"):
+                continue
             regions = record.get("regions", [])
             crops_map: dict[int, dict] = {}
             for crop in record.get("image_crops", []):
@@ -881,7 +905,11 @@ def step_start_vllm_server(
 
 
 def _sort_jsonl_by_page_idx(path: Path) -> None:
-    """Sort ocr_results.jsonl by page_idx so line N == dataset[N]."""
+    """Sort ocr_results.jsonl by page_idx so line N == dataset[N].
+
+    Also deduplicates (keeps LAST entry per page_idx for retry overwrites)
+    and verifies no gaps in the page_idx sequence.
+    """
     records: list[str] = []
     with open(path, encoding="utf-8") as f:
         for line in f:
@@ -889,13 +917,41 @@ def _sort_jsonl_by_page_idx(path: Path) -> None:
             if line:
                 records.append(line)
 
-    records.sort(key=lambda l: json.loads(l)["page_idx"])
+    # Deduplicate by page_idx, keeping LAST entry (retry results override originals)
+    # Filter out error records with page_idx=-1 (path mapping failures)
+    by_page_idx: dict[int, str] = {}
+    n_unmapped = 0
+    for line in records:
+        rec = json.loads(line)
+        pidx = rec["page_idx"]
+        if pidx < 0 or rec.get("page_id", "").startswith("__UNMAPPED"):
+            n_unmapped += 1
+            continue
+        by_page_idx[pidx] = line  # last wins
+
+    n_dupes = len(records) - len(by_page_idx) - n_unmapped
+    if n_dupes > 0:
+        print(f"  WARNING: Removed {n_dupes} duplicate page_idx entries (kept last)")
+    if n_unmapped > 0:
+        print(f"  WARNING: Removed {n_unmapped} unmapped error records")
+
+    sorted_records = [by_page_idx[k] for k in sorted(by_page_idx.keys())]
+
+    # Gap detection: verify page_idx is contiguous 0..N-1
+    sorted_idxs = sorted(by_page_idx.keys())
+    if sorted_idxs:
+        expected = list(range(sorted_idxs[0], sorted_idxs[-1] + 1))
+        missing_idxs = set(expected) - set(sorted_idxs)
+        if missing_idxs:
+            print(f"  WARNING: {len(missing_idxs)} gaps in page_idx sequence! Missing: {sorted(missing_idxs)[:20]}...")
+        if sorted_idxs[0] != 0:
+            print(f"  WARNING: page_idx starts at {sorted_idxs[0]}, expected 0")
 
     with open(path, "w", encoding="utf-8") as f:
-        for line in records:
+        for line in sorted_records:
             f.write(line + "\n")
 
-    print(f"  Sorted {len(records)} records by page_idx in {path.name}")
+    print(f"  Sorted {len(sorted_records)} records by page_idx in {path.name}")
 
 
 # ===========================================================================
@@ -939,9 +995,9 @@ def step_ocr_parsing(
 
     # Load dataset: either from Arrow shards or HF API
     if arrow_dir and arrow_dir.exists():
-        _ocr_from_arrow_shards(ocr, arrow_dir, processed_ids, batch_size, do_crops, limit)
+        _ocr_from_arrow_shards(ocr, arrow_dir, processed_ids, batch_size, do_crops, limit, resume=resume)
     else:
-        _ocr_from_hf_dataset(ocr, cache_dir, processed_ids, batch_size, do_crops, limit)
+        _ocr_from_hf_dataset(ocr, cache_dir, processed_ids, batch_size, do_crops, limit, resume=resume)
 
     ocr.close()
 
@@ -959,6 +1015,7 @@ def _ocr_from_arrow_shards(
     batch_size: int,
     do_crops: bool,
     limit: int = 0,
+    resume: bool = False,
 ) -> None:
     """Process pages from Arrow shard files."""
     from datasets import Dataset
@@ -966,12 +1023,25 @@ def _ocr_from_arrow_shards(
     arrow_files = sorted(f for f in os.listdir(arrow_dir) if f.endswith(".arrow"))
     print(f"  Found {len(arrow_files)} Arrow shards in {arrow_dir}")
 
-    # Count total pages
+    # Count total pages AND build page_id→canonical_index map from Arrow shard order
     total_pages = 0
+    arrow_pid_order: list[str] = []  # all page_ids in Arrow shard traversal order
     for af in arrow_files:
         ds = Dataset.from_file(str(arrow_dir / af))
+        shard_ids = ds["id"]
+        for sid in shard_ids:
+            arrow_pid_order.append(str(sid))
         total_pages += len(ds)
         del ds
+
+    # Verify Arrow shard order: check page_ids are unique and contiguous
+    n_unique = len(set(arrow_pid_order))
+    if n_unique != total_pages:
+        print(f"  CRITICAL: {total_pages - n_unique} duplicate page_ids in Arrow shards!")
+        print(f"  ABORTING to prevent index corruption.")
+        sys.exit(1)
+    print(f"  Arrow shard order verified: {total_pages} unique page_ids, no duplicates")
+
     if limit > 0:
         total_pages = min(total_pages, limit)
     print(f"  Total pages: {total_pages}")
@@ -981,7 +1051,8 @@ def _ocr_from_arrow_shards(
     pages_skipped = len(processed_ids)
     t_start = time.time()
 
-    out_f = open(OCR_RESULTS_FILE, "a", encoding="utf-8")
+    # "a" for resume, "w" for fresh start (prevents duplicate accumulation)
+    out_f = open(OCR_RESULTS_FILE, "a" if resume else "w", encoding="utf-8")
 
     try:
         for shard_idx, arrow_file in enumerate(arrow_files):
@@ -1073,9 +1144,21 @@ def _ocr_from_arrow_shards(
                     if orig_path and os.path.abspath(orig_path) in path_to_idx:
                         i = path_to_idx[os.path.abspath(orig_path)]
                     else:
-                        # Fallback: use sequential counter within this shard
-                        i = pbar.n  # number of results already yielded in this shard
-                        logger.warning("Could not map result to input path, using fallback index %d", i)
+                        # Path mapping failed — this is a CRITICAL alignment error.
+                        # Do NOT guess the index. Write an error record for manual recovery.
+                        print(f"\n  CRITICAL: Cannot map OCR result to input path. "
+                              f"orig_path={orig_path}, shard={shard_idx}, result #{pbar.n}")
+                        error_record = {
+                            "page_id": f"__UNMAPPED_shard{shard_idx}_result{pbar.n}",
+                            "page_idx": -1,
+                            "regions": [],
+                            "markdown": "",
+                            "image_crops": [],
+                            "error": f"Path mapping failed: orig_path={orig_path}",
+                        }
+                        out_f.write(json.dumps(error_record, ensure_ascii=False) + "\n")
+                        pbar.update(1)
+                        continue
                     page_id = pending_page_ids[i]
                     local_idx = pending_indices[i]
                     try:
@@ -1171,6 +1254,7 @@ def _ocr_from_hf_dataset(
     batch_size: int,
     do_crops: bool,
     limit: int = 0,
+    resume: bool = False,
 ) -> None:
     """Process pages from HuggingFace dataset API (fallback when Arrow dir not found)."""
     from datasets import load_dataset
@@ -1204,7 +1288,8 @@ def _ocr_from_hf_dataset(
     pages_processed = 0
     t_start = time.time()
 
-    out_f = open(OCR_RESULTS_FILE, "a", encoding="utf-8")
+    # "a" for resume, "w" for fresh start (prevents duplicate accumulation)
+    out_f = open(OCR_RESULTS_FILE, "a" if resume else "w", encoding="utf-8")
 
     try:
         pbar = tqdm(
@@ -1244,7 +1329,19 @@ def _ocr_from_hf_dataset(
                     if orig_path and os.path.abspath(orig_path) in path_to_batch_idx:
                         j = path_to_batch_idx[os.path.abspath(orig_path)]
                     else:
-                        j = 0  # single-image fallback
+                        # Path mapping failed — write error record instead of guessing
+                        print(f"\n  CRITICAL: Cannot map OCR result to input path in HF batch. "
+                              f"orig_path={orig_path}")
+                        error_record = {
+                            "page_id": f"__UNMAPPED_hf_batch{batch_start}",
+                            "page_idx": -1,
+                            "regions": [],
+                            "markdown": "",
+                            "image_crops": [],
+                            "error": f"Path mapping failed: orig_path={orig_path}",
+                        }
+                        out_f.write(json.dumps(error_record, ensure_ascii=False) + "\n")
+                        continue
                     page_id = batch_pids[j]
                     idx = batch_idx[j]
                     tmp_path = tmp_paths[j]
@@ -1362,6 +1459,48 @@ def step_compute_embeddings(
                 page_texts.append(obj.get("parsed_text", ""))
 
     print(f"  Loaded {len(page_ids)} parsed texts")
+
+    # ===== ALIGNMENT VERIFICATION =====
+    # Ensure parsed_texts line order matches corpus dataset index order.
+    # This is the CRITICAL invariant: embedding[i] must correspond to corpus_dataset[i].
+    # Use Arrow cache for speed (avoids loading full dataset with images).
+    from datasets import Dataset as _VerifyDataset, Image as _VerifyImage
+    _arrow_dir = _find_arrow_dir(cache_dir)
+    if _arrow_dir:
+        _arrow_files = sorted(f for f in os.listdir(_arrow_dir) if f.endswith(".arrow"))
+        _verify_ids: list[str] = []
+        for _af in _arrow_files:
+            _ds = _VerifyDataset.from_file(str(_arrow_dir / _af))
+            _ds_nimg = _ds.cast_column("image", _VerifyImage(decode=False))
+            _verify_ids.extend(str(x) for x in _ds_nimg["id"])
+            del _ds, _ds_nimg
+    else:
+        from datasets import load_dataset as _ld_verify
+        _vds = _ld_verify(DATASET_ID, name="SDS-KoPub-corpus", cache_dir=str(cache_dir), split="test")
+        _verify_ids = [str(_vds[i]["id"]) for i in range(len(_vds))]
+        del _vds
+
+    if len(page_ids) != len(_verify_ids):
+        print(f"  CRITICAL ALIGNMENT ERROR: parsed_texts has {len(page_ids)} entries, "
+              f"but corpus dataset has {len(_verify_ids)} entries!")
+        print(f"  Embedding computation ABORTED. Fix OCR results first.")
+        sys.exit(1)
+
+    mismatches = []
+    for i, (pid, expected) in enumerate(zip(page_ids, _verify_ids)):
+        if pid != expected:
+            mismatches.append((i, pid, expected))
+
+    if mismatches:
+        print(f"  CRITICAL ALIGNMENT ERROR: {len(mismatches)} page_id mismatches!")
+        for i, pid, expected in mismatches[:10]:
+            print(f"    Line {i}: got '{pid}', expected '{expected}'")
+        print(f"  Embedding computation ABORTED. Fix OCR results first.")
+        sys.exit(1)
+
+    print(f"  ALIGNMENT OK: {len(page_ids)} page_ids match corpus dataset order")
+    del _verify_ids
+    # ===== END ALIGNMENT VERIFICATION =====
 
     # Forturne FP8 models use compressed-tensors (NOT vLLM fp8 quantization flag)
     quantization = None
