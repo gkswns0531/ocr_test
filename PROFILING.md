@@ -161,12 +161,14 @@ Layout process() 내부 분해:
   │    table:   "Table Recognition:"  → HTML <table>    │
   │    formula: "Formula Recognition:" → LaTeX          │
   │                                                     │
-  │  vLLM 서버 설정:                                     │
+  │  vLLM 서버 설정 (프로파일링 시점):                      │
   │    모델: GLM-OCR 0.9B (FP8 dynamic quant)           │
   │    max-num-batched-tokens: 131072                   │
   │    max-num-seqs: 512                                │
   │    max-model-len: 32768                             │
   │    gpu-memory-utilization: 0.75                     │
+  │  ※ 최종 최적값: batched-tokens=65536, seqs=1024,   │
+  │    model-len=131072, gpu-util=0.90 (C-2 참고)       │
   │                                                     │
   │  64페이지 = ~500 영역 → 256 병렬 요청                 │
   └─────────────────────────────────────────────────────┘
@@ -178,7 +180,7 @@ Layout process() 내부 분해:
 - `table` 영역: HTML `<table>` 태그로 구조화 출력
 - `formula` 영역: LaTeX 수식으로 출력
 - 이미지당 평균 ~6K 토큰 (이미지 토큰이 대부분)
-- `max-num-batched-tokens=131072` → 동시에 ~20개 이미지 배치 처리
+- `max-num-batched-tokens=131072` (프로파일링 시점, 이후 A/B 테스트로 65536이 최적값으로 확정)
 
 **전체 시간의 73%**를 차지하는 최대 병목이며, 이것은 GPU 연산(VLM 추론) 자체가 걸리는 시간이므로 소프트웨어 최적화로 줄이기 어렵습니다.
 

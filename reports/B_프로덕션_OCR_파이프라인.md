@@ -120,7 +120,7 @@ GLM-OCR 0.9B (FP8 dynamic quantization)
 
 ## 5. 산출물
 
-- `run_b200_pipeline.py` (1,800 LOC): 전체 파이프라인
+- `run_b200_pipeline.py` (~1,900 LOC): 전체 파이프라인
 - `setup_b200.sh`: 환경 설정 스크립트
 - `DOCUMENTATION.md`: 파이프라인 설정/사용법 (vLLM 파라미터 가이드 포함)
 - `output_dl/ocr_results.jsonl`, `output_dl/parsed_texts.jsonl`, `output_dl/crops_regenerated/`
