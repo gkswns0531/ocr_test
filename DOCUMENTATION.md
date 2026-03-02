@@ -922,7 +922,7 @@ python3 eval_bench.py --model glm-ocr-pipeline --benchmarks omnidocbench
 
 ```
 output/embeddings/
-  corpus_ocr_text.npy      # (N_pages, 2048) 텍스트 임베딩
+  corpus_pure_text.npy     # (N_pages, 2048) 텍스트 임베딩
   corpus_regions.npy        # (N_regions, 2048) region 멀티모달 임베딩 (image+caption)
   region_metadata.jsonl     # [{page_id, region_index, crop_path, caption_text, label}]
   queries.npy               # (N_queries, 2048) 쿼리 임베딩
