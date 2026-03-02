@@ -18,11 +18,8 @@ OCR 텍스트 기반 검색은 시각적 정보(차트, 다이어그램, 지도 
 
 | 유형 | 설명 | 건수 |
 |------|------|------|
-| **text** | OCR 전체 텍스트 (figure_title/vision_footnote 포함) | 40,781 pages |
-| **pure_text** | figure_title/vision_footnote 제외 텍스트 | 40,781 pages |
+| **text** | OCR 전체 텍스트 (figure_title/vision_footnote 포함, ~5%p 우위 확인) | 40,781 pages |
 | **region** | 멀티모달 (crop 이미지 + 캡션 텍스트) | 21,052 regions |
-
-실험 결과 `text`가 `pure_text`보다 항상 ~5%p 우위 → figure_title 포함이 유리.
 
 ### 2.3 산출물 크기
 
@@ -68,14 +65,14 @@ crop 경로 매칭 로직을 `page_id` 기반 정확한 매칭으로 수정 후,
 
 ### 4.2 3방식 standalone 비교 (Qwen3-VL-8B, true_visual 40건)
 
-| R@K | pure_text | region | caption |
+| R@K | text | region | caption |
 |-----|-----------|--------|---------|
 | R@1 | 17.5% | **62.5%** | 25.0% |
 | R@5 | 30.0% | **75.0%** | 37.5% |
 | R@10 | 35.0% | **75.0%** | 40.0% |
 | R@20 | 40.0% | **77.5%** | 40.0% |
 
-Region이 압도적 1위. Caption은 Region 대비 낮지만 pure_text보다 우위.
+Region이 압도적 1위. Caption은 Region 대비 낮지만 text보다 우위.
 
 ### 4.3 Region vs Caption 역할 분석
 
