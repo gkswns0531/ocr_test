@@ -141,7 +141,7 @@ Korean document visual retrieval benchmark (SDS-KoPub-VDR-Benchmark) 에서 다�
 
 | File | Shape | Size | Description |
 |------|-------|------|-------------|
-| corpus_pure_text.npy | (40781, 2048) | 637MB | Text embeddings (no figure_title/vision_footnote) |
+| corpus_pure_text.npy | (40781, 2048) | 637MB | Text embeddings |
 | corpus_regions.npy | (21052, 2048) | 329MB | Region multimodal (image + caption) |
 | corpus_caption_text.npy | (10284, 2048) | 161MB | GPT-5-mini caption text |
 | queries.npy | (600, 2048) | 9.4MB | Query embeddings |
@@ -153,7 +153,7 @@ Korean document visual retrieval benchmark (SDS-KoPub-VDR-Benchmark) 에서 다�
 
 | File | Shape | Size | Description |
 |------|-------|------|-------------|
-| corpus_pure_text.npy | (40781, 4096) | 1.27GB | Text embeddings (no figure_title/vision_footnote) |
+| corpus_pure_text.npy | (40781, 4096) | 1.27GB | Text embeddings |
 | corpus_regions.npy | (21052, 4096) | 658MB | Region multimodal (image + caption) |
 | corpus_caption_text.npy | (10284, 4096) | 322MB | GPT-5-mini caption text |
 | queries.npy | (600, 4096) | 18.8MB | Query embeddings |
