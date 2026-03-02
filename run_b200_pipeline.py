@@ -213,6 +213,11 @@ def extract_page_text(regions: list[dict]) -> str:
             linearized = linearize_html_table(content)
             if linearized.strip():
                 parts.append(linearized)
+            else:
+                # Fallback: HTML 파싱 실패 시 raw content 사용 (모델 산출물 누락 방지)
+                raw = content.strip()
+                if raw:
+                    parts.append(raw)
         elif label in ("display_formula", "inline_formula", "formula"):
             parts.append(content.strip())
         else:

@@ -71,6 +71,10 @@ def extract_pure_texts(ocr_results_path: Path) -> list[tuple[str, str]]:
                     linearized = linearize_html_table(content)
                     if linearized.strip():
                         parts.append(linearized)
+                    else:
+                        raw = content.strip()
+                        if raw:
+                            parts.append(raw)
                 elif label in ("display_formula", "inline_formula", "formula"):
                     parts.append(content.strip())
                 else:
