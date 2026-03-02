@@ -928,7 +928,7 @@ output/embeddings/
   queries.npy               # (N_queries, 2048) 쿼리 임베딩
 ```
 
-- `corpus_regions.npy`: image/chart 크롭 이미지 + 주변 텍스트를 결합한 멀티모달 임베딩
+- `corpus_regions.npy`: image/chart region 멀티모달 임베딩
 - `region_metadata.jsonl`: region↔page 매핑 정보, 검색 결과를 페이지로 역추적할 때 사용
 
 ### 11.5 GPU 메모리별 권장 설정
