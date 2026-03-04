@@ -1,4 +1,4 @@
-"""Inference clients for vLLM OCR models and MinerU."""
+"""Inference clients for vLLM OCR models, DeepSeek-OCR2 offline, and MinerU."""
 
 from __future__ import annotations
 
@@ -20,6 +20,11 @@ from config import ModelConfig
 
 # Hard timeout (seconds) for a single inference call.
 HARD_TIMEOUT = 120
+
+# Default max_tokens per model (override the global 4096 default)
+MODEL_MAX_TOKENS: dict[str, int] = {
+    "DeepSeek-OCR2": 8192,
+}
 
 
 class VLLMOCRClient:
@@ -311,9 +316,129 @@ class PaddleOCRVLPipelineClient:
                 return "", latency_ms
 
 
+class DeepSeekOCR2Client:
+    """Offline vLLM client for DeepSeek-OCR2 using official inference pipeline.
+
+    Uses LLM.generate() (not OpenAI API) with:
+    - Custom model class (DeepseekOCR2ForCausalLM)
+    - Custom image processor with dynamic tiling (1024x1024 global + 768x768 local crops)
+    - NoRepeatNGramLogitsProcessor (ngram_size=40, window_size=90)
+    - skip_special_tokens=False
+    - VLLM_USE_V1=0
+    """
+
+    def __init__(self, model_id: str, max_tokens: int = 8192) -> None:
+        os.environ['VLLM_USE_V1'] = '0'
+
+        from deepseek_vllm.deepseek_ocr2 import DeepseekOCR2ForCausalLM
+        from deepseek_vllm.ngram_norepeat import NoRepeatNGramLogitsProcessor
+        from deepseek_vllm.image_process import DeepseekOCR2Processor
+        from transformers import AutoTokenizer
+        from vllm.model_executor.models.registry import ModelRegistry
+        from vllm import LLM, SamplingParams
+
+        ModelRegistry.register_model("DeepseekOCR2ForCausalLM", DeepseekOCR2ForCausalLM)
+
+        self.llm = LLM(
+            model=model_id,
+            hf_overrides={"architectures": ["DeepseekOCR2ForCausalLM"]},
+            block_size=256,
+            enforce_eager=False,
+            trust_remote_code=True,
+            max_model_len=8192,
+            swap_space=0,
+            max_num_seqs=1,
+            tensor_parallel_size=1,
+            gpu_memory_utilization=0.7,
+        )
+
+        logits_processors = [NoRepeatNGramLogitsProcessor(
+            ngram_size=40, window_size=90,
+            whitelist_token_ids={128821, 128822},  # <td>, </td>
+        )]
+
+        self.sampling_params = SamplingParams(
+            temperature=0.0,
+            max_tokens=max_tokens,
+            logits_processors=logits_processors,
+            skip_special_tokens=False,
+        )
+
+        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+        self.processor = DeepseekOCR2Processor(tokenizer=tokenizer)
+
+    def infer(self, image: Image.Image, prompt: str, max_tokens: int = 8192) -> tuple[str, float]:
+        """Run inference using offline LLM.generate(). Returns (text, latency_ms)."""
+        from PIL import ExifTags
+
+        t0 = time.time()
+
+        # Correct EXIF orientation (official protocol)
+        try:
+            exif = image._getexif()
+            if exif is not None:
+                orientation_key = None
+                for tag, value in ExifTags.TAGS.items():
+                    if value == 'Orientation':
+                        orientation_key = tag
+                        break
+                if orientation_key:
+                    orientation = exif.get(orientation_key, 1)
+                    if orientation == 3:
+                        image = image.rotate(180, expand=True)
+                    elif orientation == 6:
+                        image = image.rotate(270, expand=True)
+                    elif orientation == 8:
+                        image = image.rotate(90, expand=True)
+        except Exception:
+            pass
+
+        image = image.convert('RGB')
+
+        # Build full prompt with <image> placeholder
+        full_prompt = f"<image>\n{prompt}"
+
+        # Process image with official tiling processor
+        processed = self.processor.tokenize_with_images(
+            images=[image],
+            prompt=full_prompt,
+            bos=True, eos=True, cropping=True,
+        )
+
+        inputs = {
+            "prompt": full_prompt,
+            "multi_modal_data": {"image": processed},
+        }
+
+        try:
+            outputs = self.llm.generate([inputs], self.sampling_params)
+            latency_ms = (time.time() - t0) * 1000
+            text = outputs[0].outputs[0].text if outputs else ""
+            return text, latency_ms
+        except Exception as e:
+            latency_ms = (time.time() - t0) * 1000
+            print(f"[DeepSeek-OCR2] Inference error ({latency_ms:.0f}ms): {type(e).__name__}: {e}")
+            return "", latency_ms
+
+    def close(self) -> None:
+        """Release GPU resources."""
+        if hasattr(self, 'llm'):
+            del self.llm
+        import gc
+        import torch
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+
 def create_client(model_config: ModelConfig, port: int = 8000):
     """Factory to create the appropriate client for a model."""
-    if model_config.backend == "vllm":
+    if model_config.backend == "deepseek_offline":
+        return DeepSeekOCR2Client(
+            model_id=model_config.model_id,
+            max_tokens=MODEL_MAX_TOKENS.get(model_config.name, 8192),
+        )
+    elif model_config.backend == "vllm":
         return VLLMOCRClient(
             base_url=f"http://localhost:{port}/v1",
             model_name=model_config.model_id,
@@ -326,7 +451,7 @@ def create_client(model_config: ModelConfig, port: int = 8000):
         return MinerUClient()
 
 
-MAX_IMAGE_PIXELS = 2048 * 2048  # ~4M pixels
+MAX_IMAGE_PIXELS = 4096 * 4096  # ~16M pixels (relaxed to preserve detail)
 
 
 def _image_to_base64(image: Image.Image) -> str:

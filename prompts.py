@@ -96,8 +96,8 @@ MODEL_PROMPTS: dict[str, dict[str, str | None]] = {
         "handwritten": "OCR:",
     },
     "DeepSeek-OCR2": {
-        "document_parse": "Convert the document to markdown.",
-        "document_parse_dp": "Convert the document to markdown.",
+        "document_parse": "<|grounding|>Convert the document to markdown.",
+        "document_parse_dp": "<|grounding|>Convert the document to markdown.",
         "text_recognition": None,  # OCRBench uses its own question
         "formula_recognition": "Free OCR.",
         "table_to_html": "Free OCR.",

@@ -285,7 +285,7 @@ def main() -> None:
     from server import VLLMServer
     from client import create_client
 
-    # Start server if needed
+    # Start server if needed (deepseek_offline loads model inline, no server)
     server = None
     needs_server = model_config.backend in ("vllm", "glmocr_pipeline")
     if needs_server:

@@ -39,11 +39,9 @@ MODELS: dict[str, ModelConfig] = {
     "deepseek-ocr2": ModelConfig(
         name="DeepSeek-OCR2",
         model_id="deepseek-ai/DeepSeek-OCR-2",
-        backend="vllm",
+        backend="deepseek_offline",
         vllm_args=[
             "--trust-remote-code",
-            "--no-enable-prefix-caching",
-            "--mm-processor-cache-gb", "0",
             "--max-model-len", "8192",
         ],
     ),
