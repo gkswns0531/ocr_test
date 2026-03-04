@@ -169,41 +169,82 @@ def _wrap_table_html(s: str) -> str:
 
 
 def _normalize_table_html(html_str: str) -> str:
-    """Minimal table HTML normalization for TEDS comparison.
+    """Table HTML normalization for TEDS comparison.
 
-    Uses lxml (same parser as TEDS internally) to avoid tree structure
-    mismatches that occur with BeautifulSoup serialization.
-
-    Collapses whitespace in ALL text/tail nodes within cells (including
-    descendants like <b>, <i>, <span>). PubTabNet GT is pretty-printed
-    with newlines/spaces inside formatting tags that would otherwise
-    inflate char-level edit distance in TEDS.
-
-    th→td and thead unwrap are handled inside TEDS.evaluate() itself.
+    Matches OmniDocBench/utils/data_preprocess.py normalized_html_table():
+    1. th → td conversion
+    2. thead unwrap (keep contents)
+    3. math tag → $alttext$ replacement
+    4. span/sup/sub/div/p/colgroup unwrap/removal
+    5. HTML unescape + NFKC normalization
+    6. Strip style/height/width/align/class attributes
+    7. Remove tbody tags
+    8. Collapse whitespace
+    9. Wrap in standard <html><body><table> structure
     """
-    from lxml import html as _lxml_html, etree as _etree
+    import html as _html_mod
+    import unicodedata
 
-    parser = _lxml_html.HTMLParser(remove_comments=True, encoding='utf-8')
-    try:
-        doc = _lxml_html.fromstring(html_str.encode('utf-8'), parser=parser)
-    except Exception:
-        return html_str
+    from bs4 import BeautifulSoup
 
-    # Collapse whitespace in ALL text nodes within cells (td and th)
-    for cell in doc.xpath('.//td') + doc.xpath('.//th'):
-        # Cell's own text
-        if cell.text:
-            cell.text = re.sub(r'\s+', ' ', cell.text).strip()
-        # All descendant elements' text and tail
-        for desc in cell.iter():
-            if desc is cell:
-                continue
-            if desc.text:
-                desc.text = re.sub(r'\s+', ' ', desc.text).strip()
-            if desc.tail:
-                desc.tail = re.sub(r'\s+', ' ', desc.tail).strip()
+    # --- BeautifulSoup pass: tag transformations ---
+    soup = BeautifulSoup(html_str, 'html.parser')
 
-    return _etree.tostring(doc, encoding='unicode')
+    # th → td
+    for th in soup.find_all('th'):
+        th.name = 'td'
+
+    # Unwrap thead (remove tag, keep contents)
+    for thead in soup.find_all('thead'):
+        thead.unwrap()
+
+    # math tag → $alttext$
+    for math_tag in soup.find_all('math'):
+        alttext = math_tag.get('alttext', '')
+        if alttext:
+            math_tag.replace_with(f'${alttext}$')
+        else:
+            math_tag.unwrap()
+
+    # Unwrap span tags
+    for span in soup.find_all('span'):
+        span.unwrap()
+
+    # Remove sup/sub/div/p/colgroup (matching OmniDocBench clean_table)
+    for tag_name in ('sup', 'sub', 'div', 'p'):
+        for tag in soup.find_all(tag_name):
+            tag.unwrap()
+    for cg in soup.find_all('colgroup'):
+        cg.decompose()
+
+    table_html = str(soup)
+
+    # --- String-level normalization ---
+    # HTML unescape + NFKC
+    table_html = _html_mod.unescape(table_html)
+    table_html = table_html.replace('\n', '')
+    table_html = unicodedata.normalize('NFKC', table_html).strip()
+
+    # Extract table body (strip outer <table> attributes)
+    table_body_match = re.search(r'<table\b[^>]*>(.*)</table>', table_html, re.DOTALL | re.IGNORECASE)
+    if table_body_match:
+        table_html = table_body_match.group(1)
+
+    # Strip attributes: style, height, width, align, class
+    table_html = re.sub(r'( style=".*?")', '', table_html)
+    table_html = re.sub(r'( height=".*?")', '', table_html)
+    table_html = re.sub(r'( width=".*?")', '', table_html)
+    table_html = re.sub(r'( align=".*?")', '', table_html)
+    table_html = re.sub(r'( class=".*?")', '', table_html)
+
+    # Remove tbody tags
+    table_html = re.sub(r'</?tbody>', '', table_html)
+
+    # Collapse whitespace
+    table_html = re.sub(r'\s+', ' ', table_html)
+
+    # Re-wrap in standard structure
+    return f'<html><body><table border="1" >{table_html}</table></body></html>'
 
 
 def compute_teds(pred_html: str, gt_html: str, structure_only: bool = False) -> float:
@@ -215,7 +256,7 @@ def compute_teds(pred_html: str, gt_html: str, structure_only: bool = False) -> 
     - Properly handles colspan/rowspan attributes
     - Returns similarity in [0, 1]. 1 = identical.
 
-    Both pred and GT are normalized (<th>→<td>, whitespace stripped).
+    Both pred and GT are normalized (th→td, attribute stripping, NFKC, etc.).
     """
     _table_mod = _load_omnidoc_module("table_metric", "table_metric.py")
     TEDS = _table_mod.TEDS
@@ -272,19 +313,23 @@ def _load_cdm_modules():
     return CDM, l2b
 
 
-# Non-CJK template for pdflatex (no Source Han Sans SC font needed)
-_PDFLATEX_FORMULA_TEMPLATE = r"""
+# Official OmniDocBench CDM template (xelatex + CJK support)
+# Falls back to non-CJK pdflatex if xelatex is unavailable
+_XELATEX_FORMULA_TEMPLATE = r"""
 \documentclass[12pt]{article}
 \usepackage[landscape]{geometry}
 \usepackage{geometry}
 \geometry{a<PaperSize>paper,scale=0.98}
 \pagestyle{empty}
-\usepackage{booktabs}
-\usepackage{multirow}
-\usepackage{amssymb}
-\usepackage{upgreek}
 \usepackage{amsmath}
+\usepackage{upgreek}
+\usepackage{amssymb}
 \usepackage{xcolor}
+\usepackage{xeCJK}
+\setCJKmainfont{Source Han Sans SC}
+\setCJKsansfont{Source Han Sans SC}
+\setCJKmonofont{Source Han Sans SC}
+\xeCJKsetup{CJKmath=true}
 \begin{document}
 \makeatletter
 \renewcommand*{\@textcolor}[3]{%%
@@ -294,10 +339,6 @@ _PDFLATEX_FORMULA_TEMPLATE = r"""
   \endgroup
 }
 \makeatother
-%% Polyfill \mathcolor for TexLive < 2023 (CDM uses it for per-token coloring)
-\ifdefined\mathcolor\else
-  \let\mathcolor\textcolor
-\fi
 \begin{displaymath}
 %s
 \end{displaymath}
@@ -309,10 +350,10 @@ _cdm_cache: tuple | None = None  # (CDM_class, l2b_module)
 
 
 def _ensure_cdm_patches():
-    """Apply monkey-patches for CDM once (pdflatex, ImageMagick v6, RANSAC).
+    """Apply monkey-patches for CDM once (xelatex template, ImageMagick, RANSAC).
 
-    Caches the patched modules so subsequent calls return the same objects
-    (re-loading would lose the monkey-patches).
+    Uses xelatex with CJK support (official OmniDocBench protocol).
+    Falls back to ImageMagick v6 CLI ('convert') if 'magick' (v7) is unavailable.
     """
     global _cdm_cache
     if _cdm_cache is not None:
@@ -320,15 +361,17 @@ def _ensure_cdm_patches():
 
     CDM, _l2b = _load_cdm_modules()
 
-    # 1. Use pdflatex with non-CJK template
-    _l2b.formular_template = _PDFLATEX_FORMULA_TEMPLATE
+    # 1. Use official xelatex template with CJK support
+    _l2b.formular_template = _XELATEX_FORMULA_TEMPLATE
 
-    # 2. Replace xelatex → pdflatex, magick → convert (ImageMagick v6)
+    # 2. ImageMagick: use 'magick' (v7) if available, fall back to 'convert' (v6)
+    import shutil as _shutil_cdm
     _orig_run_cmd = _l2b.run_cmd
+    _use_convert = _shutil_cdm.which("magick") is None
 
     def patched_run_cmd(cmd, timeout_sec=30, temp_dir=None):
-        cmd = cmd.replace("xelatex ", "pdflatex ")
-        cmd = cmd.replace("magick ", "convert ")
+        if _use_convert:
+            cmd = cmd.replace("magick ", "convert ")
         return _orig_run_cmd(cmd, timeout_sec=timeout_sec, temp_dir=temp_dir)
 
     _l2b.run_cmd = patched_run_cmd
@@ -350,11 +393,9 @@ def _ensure_cdm_patches():
 def compute_cdm(pred_latex: str, gt_latex: str, img_id: str = "0") -> dict[str, float]:
     """CDM score using official OmniDocBench CDM implementation.
 
-    Requires pdflatex + ImageMagick installed.
+    Requires xelatex + ImageMagick installed. Uses CJK fonts (Source Han Sans SC)
+    for proper rendering of formulas containing Chinese characters.
     Returns dict with 'recall', 'precision', 'F1_score'.
-
-    Uses pdflatex instead of xelatex to avoid CJK font dependency.
-    For math-only formulas (UniMERNet), CJK support is not needed.
     Each call uses a fresh temp directory to avoid stale cached bbox files.
     """
     import shutil as _shutil

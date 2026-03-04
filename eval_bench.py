@@ -32,6 +32,41 @@ PREDICTIONS_DIR = Path("/home/ubuntu/ocr_test/predictions")
 OMNIDOCBENCH_ROOT = Path("/home/ubuntu/OmniDocBench")
 
 
+def _postprocess_deepseek(text: str) -> str:
+    """Apply official DeepSeek-OCR2 post-processing to raw model output.
+
+    Matches DeepSeek-OCR2/run_dpsk_ocr2_eval_batch.py:
+    1. clean_formula: remove \\quad annotations inside \\[...\\]
+    2. Remove <|ref|>...<|/ref|><|det|>...<|/det|> grounding tags
+    3. Remove <|end_of_sentence|> tokens
+    4. Normalize triple+ newlines to double
+    5. Substitute \\coloneqq → :=, \\eqqcolon → =:
+    """
+    import re
+
+    # 1. clean_formula: strip \quad annotations from display math
+    def _clean_formula_match(match: re.Match) -> str:
+        formula = match.group(1)
+        formula = re.sub(r'\\quad\s*\([^)]*\)', '', formula)
+        return r'\[' + formula.strip() + r'\]'
+
+    text = re.sub(r'\\\[(.*?)\\\]', _clean_formula_match, text)
+
+    # 2. Remove grounding ref/det tags
+    text = re.sub(r'<\|ref\|>.*?<\|/ref\|><\|det\|>.*?<\|/det\|>', '', text, flags=re.DOTALL)
+
+    # 3. Remove end_of_sentence tokens
+    text = text.replace('<|end_of_sentence|>', '')
+
+    # 4. Normalize excessive newlines
+    text = text.replace('\n\n\n\n', '\n\n').replace('\n\n\n', '\n\n')
+
+    # 5. Symbol substitutions
+    text = text.replace('\\coloneqq', ':=').replace('\\eqqcolon', '=:')
+
+    return text
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="OCR Evaluation (from saved predictions)")
     parser.add_argument(
@@ -91,6 +126,18 @@ def eval_omnidocbench(model_key: str) -> dict | None:
 
     print(f"[Evaluate] Found {len(md_files)} prediction .md files for OmniDocBench")
 
+    # For DeepSeek models, apply official post-processing to prediction files
+    # Use a temp directory with postprocessed copies so we don't modify originals
+    postproc_dir = None
+    if "deepseek" in model_key:
+        postproc_dir = Path(tempfile.mkdtemp(prefix="ds_postproc_"))
+        print(f"[Evaluate] Applying DeepSeek post-processing to {len(md_files)} files...")
+        for md_file in md_files:
+            text = md_file.read_text(encoding="utf-8")
+            text = _postprocess_deepseek(text)
+            (postproc_dir / md_file.name).write_text(text, encoding="utf-8")
+        pred_dir = postproc_dir
+
     # Get GT JSON path (cached by huggingface_hub)
     gt_json_path = hf_hub_download(
         "opendatalab/OmniDocBench", "OmniDocBench.json", repo_type="dataset"
@@ -148,6 +195,9 @@ def eval_omnidocbench(model_key: str) -> dict | None:
     finally:
         if config_path and os.path.exists(config_path):
             os.unlink(config_path)
+        if postproc_dir and postproc_dir.exists():
+            import shutil
+            shutil.rmtree(postproc_dir, ignore_errors=True)
 
     # Read results from OmniDocBench's result/ directory
     # save_name = basename(prediction_data_path) + "_" + match_method
@@ -335,6 +385,9 @@ def eval_benchmark(model_key: str, benchmark_key: str) -> dict | None:
                 prediction = raw_text
         else:
             prediction = raw_text
+        # Apply official DeepSeek-OCR2 post-processing
+        if "deepseek" in model_key:
+            prediction = _postprocess_deepseek(prediction)
         sample_data = gt_map[sample_id]
 
         try:

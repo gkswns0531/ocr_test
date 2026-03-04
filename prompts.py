@@ -23,7 +23,9 @@ PROMPTS: dict[str, str | None] = {
         "5. Output Format:\n"
         "- Ensure the output Markdown document has a clear structure with appropriate line breaks between elements.\n"
         "- For complex layouts, try to maintain the original document's structure and format as closely as possible.\n\n"
-        "Please strictly follow these guidelines to ensure accuracy and consistency in the conversion."
+        "Please strictly follow these guidelines to ensure accuracy and consistency in the conversion.\n"
+        "Your task is to accurately convert the content of the PDF image into Markdown format "
+        "without adding any extra explanations or comments."
     ),
     "document_parse_dp": (
         "Parse this document page. For each element, output its type and content "

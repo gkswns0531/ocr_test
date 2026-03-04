@@ -451,14 +451,9 @@ def _eval_document_parse(pred: str, gt, metadata: dict) -> dict:
                 table_teds_scores.append(teds_val)
 
     # 6. Match text+formula elements using quick_match (with timeout fallback)
-    text_edit_scores = []
-    formula_edit_scores = []
-
-    ignore_categories = {
-        'figure_caption', 'figure_footnote', 'table_caption', 'table_footnote',
-        'code_algorithm', 'code_algorithm_caption', 'header', 'footer',
-        'page_footnote', 'page_number', 'equation_caption',
-    }
+    # Track (edit_num, upper_len) tuples for official ALL_page_avg aggregation
+    text_edit_pairs: list[tuple[float, int]] = []  # (edit_num, upper_len)
+    formula_edit_pairs: list[tuple[float, int]] = []
 
     if gt_mix or pred_mix:
         try:
@@ -477,34 +472,43 @@ def _eval_document_parse(pred: str, gt, metadata: dict) -> dict:
         for m in matches:
             gt_cat = m.get('gt_category_type', '')
             edit = m.get('edit', 1.0)
-
-            if gt_cat in ignore_categories:
-                continue  # Matched but not scored (official protocol)
+            gt_text = m.get('gt', '')
+            pred_text = m.get('pred', '')
+            upper_len = max(len(gt_text), len(pred_text), 1)
 
             if gt_cat == 'equation_isolated':
-                formula_edit_scores.append(edit)
+                formula_edit_pairs.append((edit * upper_len, upper_len))
             elif gt_cat:
-                text_edit_scores.append(edit)
+                text_edit_pairs.append((edit * upper_len, upper_len))
 
-    # 7. Compute per-type averages
-    avg_text_ed = (sum(text_edit_scores) / len(text_edit_scores)
-                   if text_edit_scores else 1.0)
+    # 7. Compute per-type averages using official ALL_page_avg:
+    #    sum(edit_num) / sum(upper_len) within page (length-weighted)
+    if text_edit_pairs:
+        sum_edit = sum(p[0] for p in text_edit_pairs)
+        sum_len = sum(p[1] for p in text_edit_pairs)
+        avg_text_ed = sum_edit / sum_len if sum_len > 0 else 1.0
+    else:
+        avg_text_ed = 1.0
     text_score = (1.0 - avg_text_ed) * 100
 
     avg_table_teds = (sum(table_teds_scores) / len(table_teds_scores)
                       if table_teds_scores else 0.0)
 
-    avg_formula_ed = (sum(formula_edit_scores) / len(formula_edit_scores)
-                      if formula_edit_scores else 1.0)
+    if formula_edit_pairs:
+        sum_edit = sum(p[0] for p in formula_edit_pairs)
+        sum_len = sum(p[1] for p in formula_edit_pairs)
+        avg_formula_ed = sum_edit / sum_len if sum_len > 0 else 1.0
+    else:
+        avg_formula_ed = 1.0
     formula_score = (1.0 - avg_formula_ed) * 100
 
     # 8. Overall: average only over element types that exist on this page
     components = []
-    if text_edit_scores:
+    if text_edit_pairs:
         components.append(text_score)
     if table_teds_scores:
         components.append(avg_table_teds)
-    if formula_edit_scores:
+    if formula_edit_pairs:
         components.append(formula_score)
     overall = sum(components) / len(components) if components else 0.0
 
@@ -515,9 +519,9 @@ def _eval_document_parse(pred: str, gt, metadata: dict) -> dict:
         "formula_edit_dist": avg_formula_ed,
         "formula_score": formula_score,
         "overall": overall,
-        "n_text_elements": len(text_edit_scores),
+        "n_text_elements": len(text_edit_pairs),
         "n_table_elements": len(table_teds_scores),
-        "n_formula_elements": len(formula_edit_scores),
+        "n_formula_elements": len(formula_edit_pairs),
     }
 
 
