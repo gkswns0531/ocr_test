@@ -47,21 +47,50 @@
 
 ---
 
-## 3. 공식 발표 수치 대비 Gap 분석
+## 3. 공식 벤치마크 결과 (Official Benchmark)
 
-| 벤치마크 | 모델 | 우리 결과 | 공식 발표 | Gap | 원인 |
+|  | GLM-OCR | PaddleOCR-VL-1.5 | Deepseek-OCR2 | MinerU2.5 | dots.ocr | Gemini-3-Pro | GPT-5.2-2025-12-11 |
+|--|---------|-------------------|---------------|-----------|----------|--------------|---------------------|
+|  | Specialized VLM | Specialized VLM | Specialized VLM | Specialized VLM | Specialized VLM | General VLM | General VLM |
+| **Document Parsing** |  |  |  |  |  |  |  |
+| OmniDocBench v1.5 | **94.6** | 94.5 | 91.1 | 90.7 | 88.4 | 90.3 | 85.4 |
+| **Text Recognition** |  |  |  |  |  |  |  |
+| OCRBench (Text) | **94.0** | 75.3 | 34.7 | 75.3 | 92.1 | 91.9 | 83.7 |
+| **Formula Recognition** |  |  |  |  |  |  |  |
+| UniMERNet | **96.5** | 96.1 | 85.8 | 96.4 | 90.0 | 96.4 | 90.5 |
+| **Table Recognition** |  |  |  |  |  |  |  |
+| PubTabNet | 85.2 | 84.6 | – | **88.4** | 71.0 | 91.4 | 84.4 |
+| TEDS_TEST | **86.0** | 83.3 | – | 85.4 | 62.4 | 81.8 | 67.6 |
+| **Information Extraction** |  |  |  |  |  |  |  |
+| Nanonets-KIE | **93.7** | – | – | – | – | 95.2 | 87.5 |
+| Handwritten-Forms | **86.1** | – | – | – | – | 94.5 | 78.2 |
+
+---
+
+## 4. 공식 발표 수치 대비 Gap 분석 (Our Results vs Official)
+
+| 벤치마크 | 모델 | 우리 결과 | 공식 발표 | Delta | 비고 |
 |:---|:---|---:|---:|---:|:---|
-| OmniDocBench | GLM-OCR-P | 91.9 | 94.62 | −2.7 | 파이프라인 구현 차이 |
-| OmniDocBench | PaddleOCR-VL-P | 91.9 | 94.50 | −2.6 | 파이프라인 구현 차이 |
-| OmniDocBench | DeepSeek-OCR2 | 79.6 | 91.09 | −11.5 | VLM-direct vs 파이프라인 |
+| OmniDocBench | GLM-OCR | 91.9 | 94.6 | −2.7 | 파이프라인 구현 차이 |
+| OmniDocBench | PaddleOCR-VL | 91.9 | 94.5 | −2.6 | 파이프라인 구현 차이 |
+| OmniDocBench | DeepSeek-OCR2 | 79.6 | 91.1 | −11.5 | VLM-direct vs 파이프라인 |
 | OCRBench | GLM-OCR | 83.8 | 94.0 | −10.2 | VLM 추론 환경 차이 |
-| UniMERNet CDM | GLM-OCR | 94.1 | 96.5 | −2.4 | 모델 성능 차이 |
+| OCRBench | PaddleOCR-VL | 71.3 | 75.3 | −4.0 | VLM 추론 환경 차이 |
+| OCRBench | DeepSeek-OCR2 | 48.4 | 34.7 | +13.7 | 우리 결과가 더 높음 |
+| UniMERNet | GLM-OCR | 94.1 | 96.5 | −2.4 | 모델 성능 차이 |
+| UniMERNet | PaddleOCR-VL | 96.9 | 96.1 | +0.8 | 우리 결과가 더 높음 |
+| UniMERNet | DeepSeek-OCR2 | 78.7 | 85.8 | −7.1 | 모델 성능 차이 |
+| PubTabNet | GLM-OCR | 86.1 | 85.2 | +0.9 | 우리 결과가 더 높음 |
+| PubTabNet | PaddleOCR-VL | 84.8 | 84.6 | +0.2 | 거의 동일 |
+| TEDS_TEST | GLM-OCR | 84.4 | 86.0 | −1.6 | 소폭 차이 |
+| TEDS_TEST | PaddleOCR-VL | 84.4 | 83.3 | +1.1 | 우리 결과가 더 높음 |
+| Nanonets-KIE | GLM-OCR | 58.4 | 93.7 | −35.3 | 파이프라인 구현 차이 큼 |
 
 > **결론**: 모든 gap은 모델/파이프라인 품질 차이이며, eval 코드 버그는 아님 (전수 샘플 확인 완료)
 
 ---
 
-## 4. 모델별 강점/약점 요약
+## 5. 모델별 강점/약점 요약
 
 ### GLM-OCR
 - **강점**: OCR 정확도 1위 (83.8%), 테이블 인식 1위 (TEDS 86.1%), 손글씨 1위 (CER 3.9%)
@@ -81,7 +110,7 @@
 
 ---
 
-## 5. Eval 수정 이력 (총 15건)
+## 6. Eval 수정 이력 (총 15건)
 
 | # | 수정 내용 | 영향 벤치마크 | 효과 |
 |---:|:---|:---|:---|
