@@ -1,6 +1,6 @@
 # OCR VLM 벤치마크 평가 시스템 종합 문서
 
-> 최종 업데이트: 2026-02-26
+> 최종 업데이트: 2026-03-04
 
 ---
 
@@ -14,7 +14,7 @@
    - 3.3 [DeepSeek-OCR2 (Direct VLM)](#33-deepseek-ocr2-direct-vlm)
    - 3.4 [GLM-OCR-Pipeline](#34-glm-ocr-pipeline)
    - 3.5 [PaddleOCR-VL-Pipeline](#35-paddleocr-vl-pipeline)
-   - 3.6 [MinerU-2.5](#36-mineru-25)
+   - 3.6 [MinerU-2.7.6 (Hybrid Pipeline)](#36-mineru-276-hybrid-pipeline)
 4. [레이아웃 파이프라인 아키텍처](#4-레이아웃-파이프라인-아키텍처)
    - 4.1 [Direct VLM vs Pipeline 비교](#41-direct-vlm-vs-pipeline-비교)
    - 4.2 [PP-DocLayoutV3 레이아웃 감지](#42-pp-doclayoutv3-레이아웃-감지)
@@ -285,16 +285,82 @@ output = pipeline.predict("input.jpg")
 - Direct: vLLM 서버 필요, OpenAI API로 통신
 - Pipeline: 별도 서버 불필요, SDK가 모든 모델을 프로세스 내 로드
 
-### 3.6 MinerU-2.5
+### 3.6 MinerU-2.7.6 (Hybrid Pipeline)
 
 | 항목 | 값 |
 |:---|:---|
 | **모델 ID** | `mineru` |
-| **설치 경로** | `/root/junghoon/miner_test/MinerU` |
-| **백엔드** | `mineru` (자체 파이프라인) |
-| **구조** | `do_parse()` → 마크다운 출력 |
+| **버전** | 2.7.6 (`pip install mineru[core]`) |
+| **백엔드** | `mineru` → `hybrid-auto-engine` (vllm-engine) |
+| **VLM** | MinerU2.5-2509-1.2B (Qwen2VL 기반, 1.2B 파라미터) |
+| **구조** | `do_parse()` → hybrid pipeline → 마크다운 출력 |
+| **GPU 메모리** | ~2.6 GiB (모델) + ~0.45 GiB (CUDA graphs) |
+| **추론 속도** | ~5초/페이지 (L4 GPU 기준) |
 
-MinerU는 OCR VLM이 아닌 문서 파싱 파이프라인으로, 이미지를 입력받아 마크다운을 출력합니다. 현재 eval에서는 OmniDocBench 평가에만 사용됩니다.
+MinerU는 **멀티모델 하이브리드 파이프라인**으로, 10개 이상의 전문 모델을 조합하여 문서를 파싱합니다.
+
+**Hybrid Pipeline 구조** (우리 구현에서 사용하는 `hybrid-auto-engine`):
+
+```
+이미지 입력
+  → pypdfium2: 이미지→PDF 변환 (images_bytes_to_pdf_bytes)
+  → MinerU2.5 VLM 1차: 레이아웃 분석 (페이지 전체 → 영역 검출)
+  → MinerU2.5 VLM 2차: 영역별 콘텐츠 인식 (N개 영역 배치 처리)
+  → Pipeline 후처리: 수식/테이블 전문 모델 보조
+  → 마크다운 조립 + 읽기 순서 정렬
+  → .md 파일 출력
+```
+
+**모델 구성 (PDF-Extract-Kit-1.0 + VLM)**:
+
+| 모델 | 역할 | 비고 |
+|:---|:---|:---|
+| **MinerU2.5-2509-1.2B** | VLM: 레이아웃 분석 + 콘텐츠 인식 | Qwen2VL 기반, vllm-engine 서빙 |
+| DocLayout-YOLO | 레이아웃 검출 (pipeline 모드용) | hybrid에서는 VLM이 대체 |
+| MFD YOLO | 수식 영역 검출 | |
+| UniMERNet (MFR) | 수식 인식 | |
+| FormulaNet-Plus | 수식 인식 (추가) | |
+| PaddleOCR-torch | OCR 텍스트 인식 | |
+| SlanetPlus / UnetStructure | 테이블 구조 인식 | |
+| PP-LCNet TableCls | 테이블 분류 | |
+| PP-LCNet OriCls | 문서 방향 분류 | |
+| LayoutReader | 읽기 순서 결정 | |
+
+**세 가지 백엔드 비교**:
+
+| 백엔드 | 설명 | 성능 |
+|:---|:---|:---|
+| `pipeline` | 전통 파이프라인 (YOLO + 전문 모델들) | 범용적 |
+| `vlm-auto-engine` | VLM만으로 레이아웃+인식 통합 처리 | 고정밀 |
+| `hybrid-auto-engine` **(사용)** | VLM(레이아웃+인식) + 전문 모델(보조) | **최고 성능** |
+
+**다른 파이프라인과의 비교**:
+
+| | MinerU hybrid | GLM-OCR Pipeline | PaddleOCR-VL Pipeline |
+|:---|:---|:---|:---|
+| 레이아웃 모델 | MinerU2.5 VLM (1.2B) | PP-DocLayout-V3 | PP-DocLayout |
+| 인식 모델 | MinerU2.5 VLM (1.2B) | GLM-OCR VLM (2B) | PaddleOCR-VL (2B) |
+| 수식 전문 모델 | UniMERNet + FormulaNet | 없음 (VLM 통합) | 없음 (VLM 통합) |
+| 테이블 전문 모델 | SlanetPlus + UnetStructure | 없음 (VLM 통합) | 없음 (VLM 통합) |
+| OCR 전문 모델 | PaddleOCR-torch | 없음 (VLM 통합) | 없음 (VLM 통합) |
+| 총 모델 수 | **10+개** | 2개 | 2개 |
+| VLM 파라미터 | 1.2B | 2B | 2B |
+| 서버 필요 여부 | 불필요 (프로세스 내 vLLM) | vLLM 서버 필요 | 불필요 (SDK 내장) |
+
+**우리 구현 (`client.py` MinerUClient)**:
+
+```python
+# MinerU 2.7.6 API 사용 (mineru.cli.common.do_parse)
+# 1. PIL Image → PNG 저장 → read_fn()으로 PDF bytes 변환
+# 2. do_parse() 호출 (hybrid-auto-engine, 불필요한 출력 비활성화)
+# 3. 출력 디렉토리에서 .md 파일 읽어서 반환
+
+client = MinerUClient(backend="hybrid-auto-engine")
+markdown, latency_ms = client.infer(image, prompt)
+```
+
+**벤치마크 적용 범위**: OmniDocBench (문서 파싱), DP-Bench (문서 파싱)
+- OCRBench, KIE, Handwritten 등은 MinerU의 설계 목적(문서→마크다운)과 맞지 않아 제외
 
 ---
 

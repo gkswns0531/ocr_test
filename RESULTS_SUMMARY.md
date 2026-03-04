@@ -1,6 +1,6 @@
 # OCR VLM 벤치마크 평가 결과 종합표
 
-> 평가일: 2026-02-26 | 총 15개 eval 수정 적용 완료
+> 평가일: 2026-02-26 (기존 모델) / 2026-03-04 (MinerU-2.7.6 추가) | 총 15개 eval 수정 적용 완료
 
 ---
 
@@ -23,27 +23,27 @@
 
 ### Pipeline 모델 (문서 파싱 파이프라인 경유)
 
-| 벤치마크 | 메트릭 | 샘플 수 | GLM-OCR-Pipeline | PaddleOCR-VL-Pipeline | DeepSeek-OCR2 |
-|:---|:---|---:|---:|---:|---:|
-| **OmniDocBench** | Overall ↑ | - | 91.9 | 91.9 | 79.6 |
-| **Nanonets-KIE** | ANLS ↑ | 987/147 | 58.4% | 80.8% | **84.0%** |
-| **DP-Bench** | NID ↑ | 200 | 87.6% | 87.4% | **90.1%** |
-| **DP-Bench** | TEDS ↑ | 200 | 86.7% | **95.2%** | 83.0% |
-| **DP-Bench** | TEDS-struct ↑ | 200 | 89.3% | **96.9%** | 86.0% |
+| 벤치마크 | 메트릭 | 샘플 수 | GLM-OCR-Pipeline | PaddleOCR-VL-Pipeline | DeepSeek-OCR2 | MinerU-2.7.6 |
+|:---|:---|---:|---:|---:|---:|---:|
+| **OmniDocBench** | Overall ↑ | 1,355 | 91.9 | 91.9 | 79.6 | **90.6** |
+| **Nanonets-KIE** | ANLS ↑ | 987/147 | 58.4% | 80.8% | **84.0%** | - |
+| **DP-Bench** | NID ↑ | 200 | 87.6% | 87.4% | 90.1% | **91.4%** |
+| **DP-Bench** | TEDS ↑ | 200 | 86.7% | 95.2% | 83.0% | **95.0%** |
+| **DP-Bench** | TEDS-struct ↑ | 200 | 89.3% | **96.9%** | 86.0% | 95.4% |
 
 ---
 
 ## 2. OmniDocBench 세부 메트릭
 
-| 카테고리 | 메트릭 | GLM-OCR-Pipeline | PaddleOCR-VL-Pipeline | DeepSeek-OCR2 |
-|:---|:---|---:|---:|---:|
-| **Text Block** | 1−ED (ALL page) ↑ | **94.0%** | 95.7% | 88.1% |
-| **Text Block** | 1−ED (edit whole) ↑ | 86.1% | **92.8%** | 71.4% |
-| **Table** | TEDS ↑ | **89.9%** | 88.1% | 59.8% |
-| **Table** | TEDS-struct ↑ | **94.2%** | 91.9% | 63.9% |
-| **Reading Order** | 1−ED ↑ | 93.5% | **95.8%** | 89.1% |
-| **Formula** | CDM ↑ | **91.9%** | 91.8% | 90.9% |
-| **Formula** | 1−ED ↑ | **89.4%** | 89.0% | 82.8% |
+| 카테고리 | 메트릭 | GLM-OCR-Pipeline | PaddleOCR-VL-Pipeline | DeepSeek-OCR2 | MinerU-2.7.6 |
+|:---|:---|---:|---:|---:|---:|
+| **Text Block** | 1−ED (ALL page) ↑ | 94.0% | **95.7%** | 88.1% | 94.6% |
+| **Text Block** | 1−ED (edit whole) ↑ | 86.1% | **92.8%** | 71.4% | 93.4% |
+| **Table** | TEDS ↑ | **89.9%** | 88.1% | 59.8% | 85.7% |
+| **Table** | TEDS-struct ↑ | **94.2%** | 91.9% | 63.9% | 90.1% |
+| **Reading Order** | 1−ED ↑ | 93.5% | 95.8% | 89.1% | **94.8%** |
+| **Formula** | CDM ↑ | 91.9% | 91.8% | 90.9% | **91.5%** |
+| **Formula** | 1−ED ↑ | **89.4%** | 89.0% | 82.8% | 86.7% |
 
 ---
 
@@ -74,6 +74,7 @@
 | OmniDocBench | GLM-OCR | 91.9 | 94.6 | −2.7 | 파이프라인 구현 차이 |
 | OmniDocBench | PaddleOCR-VL | 91.9 | 94.5 | −2.6 | 파이프라인 구현 차이 |
 | OmniDocBench | DeepSeek-OCR2 | 79.6 | 91.1 | −11.5 | VLM-direct vs 파이프라인 |
+| OmniDocBench | MinerU-2.7.6 | 90.6 | 90.7 | −0.1 | 공식 수치와 거의 동일 |
 | OCRBench | GLM-OCR | 83.8 | 94.0 | −10.2 | VLM 추론 환경 차이 |
 | OCRBench | PaddleOCR-VL | 71.3 | 75.3 | −4.0 | VLM 추론 환경 차이 |
 | OCRBench | DeepSeek-OCR2 | 48.4 | 34.7 | +13.7 | 우리 결과가 더 높음 |
@@ -104,9 +105,15 @@
 - **강점**: KIE 필드 추출 1위 (ANLS 84.0%), DP-Bench 텍스트 NID 1위 (90.1%)
 - **약점**: OCRBench 저조 (48.4%), 수식 인식 저조 (CDM 78.7%), 손글씨 저조 (CER 18.5%)
 
-### Pipeline 비교 (GLM-P vs PaddleOCR-P)
+### MinerU-2.7.6
+- **강점**: DP-Bench NID 1위 (91.4%), DP-Bench TEDS 2위 (95.0%), ODB 공식 수치와 거의 동일 (90.6 vs 90.7)
+- **약점**: ODB 테이블 TEDS (85.7%)가 GLM-P (89.9%)보다 낮음, 수식 ED (86.7%)도 GLM-P (89.4%)보다 낮음
+- **특징**: 10+개 전문 모델 조합 하이브리드 파이프라인, 1.2B VLM으로 레이아웃+인식 2단계 처리
+
+### Pipeline 비교 (GLM-P vs PaddleOCR-P vs MinerU)
 - **GLM-P**: 테이블 구조 강점 (TEDS 89.9%), 수식 CDM 근소 우위 (91.9% vs 91.8%)
 - **PaddleOCR-P**: 텍스트 블록 강점 (95.7%), 읽기 순서 강점 (95.8%), KIE 크게 우위 (80.8% vs 58.4%)
+- **MinerU**: DP-Bench NID/TEDS 최강, 텍스트 블록 (94.6%) 준수, 읽기 순서 (94.8%) 준수, 모델 수 가장 많음
 
 ---
 
