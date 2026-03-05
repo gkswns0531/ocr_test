@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import io
 import os
-import sys
 import tempfile
 import threading
 import time
@@ -113,45 +112,51 @@ class VLLMOCRClient:
 
 
 class MinerUClient:
-    """Client that wraps MinerU's do_parse pipeline."""
+    """Client that wraps MinerU 2.7.6+ do_parse pipeline (hybrid-auto-engine)."""
 
-    def __init__(self) -> None:
-        mineru_path = "/home/ubuntu/junghoon/miner_test/MinerU"
-        if mineru_path not in sys.path:
-            sys.path.insert(0, mineru_path)
+    def __init__(self, backend: str = "hybrid-auto-engine") -> None:
+        self._backend = backend
         self._parse_fn = None
+        self._read_fn = None
 
-    def _get_parse_fn(self):
+    def _lazy_init(self):
         if self._parse_fn is None:
-            from demo.demo import do_parse  # type: ignore
+            from mineru.cli.common import do_parse, read_fn
             self._parse_fn = do_parse
-        return self._parse_fn
+            self._read_fn = read_fn
 
     def infer(self, image: Image.Image, prompt: str, max_tokens: int = 4096) -> tuple[str, float]:
-        """Save image as temp file, run MinerU parse, return (markdown, latency_ms)."""
+        """Convert image to PDF bytes, run MinerU parse, return (markdown, latency_ms)."""
+        self._lazy_init()
         t0 = time.time()
         with tempfile.TemporaryDirectory() as tmpdir:
+            # Save image and convert to PDF bytes via MinerU's reader
             img_path = Path(tmpdir) / "input.png"
             image.save(str(img_path))
+            pdf_bytes = self._read_fn(img_path)
+
             out_dir = Path(tmpdir) / "output"
             out_dir.mkdir()
             try:
-                parse_fn = self._get_parse_fn()
-                parse_fn(
-                    str(img_path),
+                self._parse_fn(
                     str(out_dir),
-                    backend="pipeline",
+                    ["input"],
+                    [pdf_bytes],
+                    ["ch"],
+                    backend=self._backend,
                     parse_method="auto",
+                    f_draw_layout_bbox=False,
+                    f_draw_span_bbox=False,
+                    f_dump_orig_pdf=False,
+                    f_dump_middle_json=False,
+                    f_dump_model_output=False,
+                    f_dump_content_list=False,
                 )
                 latency_ms = (time.time() - t0) * 1000
                 # Find the markdown output
                 md_files = list(out_dir.rglob("*.md"))
                 if md_files:
                     return md_files[0].read_text(encoding="utf-8"), latency_ms
-                # Fall back to any text output
-                json_files = list(out_dir.rglob("*content_list.json"))
-                if json_files:
-                    return json_files[0].read_text(encoding="utf-8"), latency_ms
                 return "", latency_ms
             except Exception as e:
                 latency_ms = (time.time() - t0) * 1000

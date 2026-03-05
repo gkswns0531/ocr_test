@@ -46,7 +46,7 @@ MODELS: dict[str, ModelConfig] = {
         ],
     ),
     "mineru": ModelConfig(
-        name="MinerU-2.5",
+        name="MinerU-2.7.6",
         model_id="mineru",
         backend="mineru",
     ),
