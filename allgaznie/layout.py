@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import torch
 
-from allgaznie.postprocess import spatial_reading_order, vectorized_containment, vectorized_nms
+from allgaznie.postprocess import (
+    filter_large_images,
+    spatial_reading_order,
+    vectorized_containment,
+    vectorized_nms,
+)
 from allgaznie.preprocess import cpu_decode_and_resize, gpu_decode_and_resize
 
 logger = logging.getLogger(__name__)
@@ -51,6 +56,8 @@ class Detection:
     task: str  # "text" | "table" | "formula" | "skip" | "abandon"
     bbox: tuple[int, int, int, int]  # (x1, y1, x2, y2) pixel coords
     score: float
+    order: int = -1  # model-predicted reading order (-1 = unknown)
+    polygon: list[list[int]] = field(default_factory=list)  # polygon points [[x,y], ...]
 
 
 class LayoutDetector:
@@ -134,6 +141,9 @@ class LayoutDetector:
         with torch.inference_mode():
             outputs = self.model(pixel_values=pixel_values)
 
+        # Tiny box pre-filter: mask logits for boxes smaller than 1 mask pixel (SDK layout_detector.py:258-275)
+        self._prefilter_tiny_boxes(outputs)
+
         # BF16 → FP32 for post_process compatibility (OPT-010)
         self._outputs_to_float32(outputs)
 
@@ -152,6 +162,14 @@ class LayoutDetector:
             labels = raw["labels"].cpu().numpy()
             boxes = raw["boxes"].cpu().numpy()  # (N, 4) float [x1,y1,x2,y2]
 
+            # Extract order_seq if available (model-predicted reading order)
+            order_seq = None
+            if "order_seq" in raw:
+                order_seq = raw["order_seq"].cpu().numpy()
+
+            # Extract polygon_points if available
+            polygon_points = raw.get("polygon_points", [])
+
             n = len(scores)
             if n == 0:
                 all_detections.append([])
@@ -164,7 +182,7 @@ class LayoutDetector:
             # Integer class IDs for NMS
             class_ids = labels.astype(np.float64)
 
-            # Vectorized NMS (OPT-006)
+            # Vectorized NMS with SDK params (iou_diff=0.98)
             kept = vectorized_nms(boxes, scores, class_ids)
             if not kept:
                 all_detections.append([])
@@ -172,17 +190,42 @@ class LayoutDetector:
 
             kept_boxes = boxes[kept]
             kept_scores = scores[kept]
+            kept_labels = labels[kept]
             kept_names = [label_names[i] for i in kept]
             kept_tasks = [tasks[i] for i in kept]
+            kept_order = order_seq[kept] if order_seq is not None else None
+            kept_polygons = [polygon_points[i] if i < len(polygon_points) else None for i in kept]
 
-            # Vectorized containment (OPT-006)
-            contained = vectorized_containment(kept_boxes)
-            keep_mask = ~contained
+            # Filter large images (SDK layout_postprocess_utils.py:242-264)
+            img_w, img_h = original_sizes[img_idx]
+            large_keep = filter_large_images(kept_boxes, kept_labels, kept_names, (img_w, img_h))
+            if not large_keep.all():
+                idx = np.where(large_keep)[0]
+                kept_boxes = kept_boxes[idx]
+                kept_scores = kept_scores[idx]
+                kept_labels = kept_labels[idx]
+                kept_names = [kept_names[i] for i in idx]
+                kept_tasks = [kept_tasks[i] for i in idx]
+                kept_order = kept_order[idx] if kept_order is not None else None
+                kept_polygons = [kept_polygons[i] for i in idx]
 
-            kept_boxes = kept_boxes[keep_mask]
-            kept_scores = kept_scores[keep_mask]
-            kept_names = [n for n, k in zip(kept_names, keep_mask) if k]
-            kept_tasks = [t for t, k in zip(kept_tasks, keep_mask) if k]
+            # Vectorized containment with per-class mode and preserve classes
+            if len(kept_boxes) > 0:
+                contained = vectorized_containment(
+                    kept_boxes,
+                    threshold=0.8,
+                    label_names=kept_names,
+                    class_ids=kept_labels,
+                )
+                keep_mask = ~contained
+
+                kept_boxes = kept_boxes[keep_mask]
+                kept_scores = kept_scores[keep_mask]
+                kept_labels = kept_labels[keep_mask]
+                kept_names = [n for n, k in zip(kept_names, keep_mask) if k]
+                kept_tasks = [t for t, k in zip(kept_tasks, keep_mask) if k]
+                kept_order = kept_order[keep_mask] if kept_order is not None else None
+                kept_polygons = [p for p, k in zip(kept_polygons, keep_mask) if k]
 
             # Filter abandon categories
             final_indices = [i for i, t in enumerate(kept_tasks) if t != "abandon"]
@@ -194,22 +237,65 @@ class LayoutDetector:
             final_scores = kept_scores[final_indices]
             final_names = [kept_names[i] for i in final_indices]
             final_tasks = [kept_tasks[i] for i in final_indices]
+            final_order = kept_order[final_indices] if kept_order is not None else None
+            final_polygons = [kept_polygons[i] for i in final_indices]
 
-            # Reading order
-            order = spatial_reading_order(final_boxes)
+            # Reading order: prefer model's order_seq, fallback to spatial
+            if final_order is not None:
+                order = np.argsort(final_order).tolist()
+            else:
+                order = spatial_reading_order(final_boxes)
 
             detections: list[Detection] = []
             for i in order:
                 bx = final_boxes[i]
+                # Convert polygon to list format
+                poly = []
+                if final_polygons[i] is not None:
+                    try:
+                        poly_arr = np.array(final_polygons[i])
+                        if poly_arr.ndim == 2 and poly_arr.shape[1] == 2:
+                            poly = [[int(p[0]), int(p[1])] for p in poly_arr]
+                    except (ValueError, TypeError):
+                        pass
+
                 detections.append(Detection(
                     label=final_names[i],
                     task=final_tasks[i],
                     bbox=(int(bx[0]), int(bx[1]), int(bx[2]), int(bx[3])),
                     score=float(final_scores[i]),
+                    order=int(final_order[i]) if final_order is not None else -1,
+                    polygon=poly,
                 ))
             all_detections.append(detections)
 
         return all_detections
+
+    def _prefilter_tiny_boxes(self, outputs: object) -> None:
+        """Mask logits for boxes smaller than 1 mask pixel (SDK layout_detector.py:258-275)."""
+        try:
+            pred_boxes = getattr(outputs, "pred_boxes", None)
+            if pred_boxes is None:
+                return
+            out_masks = getattr(outputs, "out_masks", None)
+            if out_masks is not None:
+                mask_h, mask_w = out_masks.shape[-2:]
+            else:
+                mask_h, mask_w = 200, 200
+            min_norm_w = 1.0 / mask_w
+            min_norm_h = 1.0 / mask_h
+            box_wh = pred_boxes[..., 2:4]
+            valid_mask = (box_wh[..., 0] > min_norm_w) & (box_wh[..., 1] > min_norm_h)
+            logits = getattr(outputs, "logits", None)
+            if logits is not None:
+                invalid_mask = ~valid_mask
+                if invalid_mask.any():
+                    # Clone to avoid inplace update error under inference_mode + torch.compile
+                    new_logits = logits.clone()
+                    new_logits.masked_fill_(invalid_mask.unsqueeze(-1), -100.0)
+                    outputs.logits = new_logits
+        except Exception as e:
+            logger.warning("Pre-filter failed (%s), continuing...", e)
 
     @staticmethod
     def _outputs_to_float32(outputs: object) -> None:

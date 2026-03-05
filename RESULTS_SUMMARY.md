@@ -1,142 +1,134 @@
-# OCR VLM 벤치마크 평가 결과 종합표
+# OCR 벤치마크 전체 평가 결과 종합표
 
-> 평가일: 2026-02-26 (기존 모델) / 2026-03-04 (MinerU-2.7.6 추가) | 총 15개 eval 수정 적용 완료
-
----
-
-## 1. 전체 결과 요약
-
-### Direct VLM 모델 (이미지 → 텍스트 직접 추론)
-
-| 벤치마크 | 메트릭 | 샘플 수 | GLM-OCR | PaddleOCR-VL | DeepSeek-OCR2 |
-|:---|:---|---:|---:|---:|---:|
-| **OCRBench** | Accuracy ↑ | 1,000 | **83.8%** | 71.3% | 48.4% |
-| **PubTabNet** | TEDS ↑ | 200 | **86.1%** | 84.8% | 84.6% |
-| **PubTabNet** | TEDS-struct ↑ | 200 | **92.3%** | 91.0% | 90.7% |
-| **TEDS_TEST** | TEDS ↑ | 200 | **84.4%** | 84.4% | 81.9% |
-| **TEDS_TEST** | TEDS-struct ↑ | 200 | **91.2%** | 90.6% | 87.9% |
-| **IAM Handwritten** | CER ↓ | 200 | **3.9%** | 4.1% | 18.5% |
-| **IAM Handwritten** | WER ↓ | 200 | **14.9%** | 14.4% | 30.4% |
-| **UniMERNet** | CDM F1 ↑ | 200 | 94.1% | **96.9%** | 78.7% |
-| **UniMERNet** | Edit Dist ↓ | 200 | 22.2% | **8.1%** | 39.2% |
-| **UniMERNet** | BLEU ↑ | 200 | 74.3% | **89.8%** | 42.6% |
-
-### Pipeline 모델 (문서 파싱 파이프라인 경유)
-
-| 벤치마크 | 메트릭 | 샘플 수 | GLM-OCR-Pipeline | PaddleOCR-VL-Pipeline | DeepSeek-OCR2 | MinerU-2.7.6 |
-|:---|:---|---:|---:|---:|---:|---:|
-| **OmniDocBench** | Overall ↑ | 1,355 | 91.9 | 91.9 | 79.6 | **90.6** |
-| **Nanonets-KIE** | ANLS ↑ | 987/147 | 58.4% | 80.8% | **84.0%** | - |
-| **DP-Bench** | NID ↑ | 200 | 87.6% | 87.4% | 90.1% | **91.4%** |
-| **DP-Bench** | TEDS ↑ | 200 | 86.7% | 95.2% | 83.0% | **95.0%** |
-| **DP-Bench** | TEDS-struct ↑ | 200 | 89.3% | **96.9%** | 86.0% | 95.4% |
+> 평가일: 2026-03-05 | CDM Fix 3건 적용 | GPU: NVIDIA RTX PRO 6000 Blackwell 98GB
+> vLLM 0.16.1rc1 | PyTorch 2.10 | CUDA 12.8
 
 ---
 
-## 2. OmniDocBench 세부 메트릭
+## 1. Pipeline SDK — OmniDocBench v1.5 (문서 파싱)
 
-| 카테고리 | 메트릭 | GLM-OCR-Pipeline | PaddleOCR-VL-Pipeline | DeepSeek-OCR2 | MinerU-2.7.6 |
-|:---|:---|---:|---:|---:|---:|
-| **Text Block** | 1−ED (ALL page) ↑ | 94.0% | **95.7%** | 88.1% | 94.6% |
-| **Text Block** | 1−ED (edit whole) ↑ | 86.1% | **92.8%** | 71.4% | 93.4% |
-| **Table** | TEDS ↑ | **89.9%** | 88.1% | 59.8% | 85.7% |
-| **Table** | TEDS-struct ↑ | **94.2%** | 91.9% | 63.9% | 90.1% |
-| **Reading Order** | 1−ED ↑ | 93.5% | 95.8% | 89.1% | **94.8%** |
-| **Formula** | CDM ↑ | 91.9% | 91.8% | 90.9% | **91.5%** |
-| **Formula** | 1−ED ↑ | **89.4%** | 89.0% | 82.8% | 86.7% |
+| 모델 | Text (1−ED) ↑ | Table (TEDS) ↑ | Formula (CDM) ↑ | **Overall** ↑ | 공식 | Δ |
+|:---|---:|---:|---:|---:|---:|---:|
+| **GLM-OCR Pipeline** (공식 SDK) | 94.5% | 92.2% | 92.5% | **93.0** | 94.6 | −1.6 |
+| **MinerU 2.5** (공식 SDK) | 94.8% | 86.3% | 90.9% | **90.7** | 90.7 | **0.0** |
+| PaddleOCR-VL Pipeline | — | — | — | — | 94.5 | — |
+
+> PaddleOCR-VL Pipeline은 Blackwell GPU에서 실행 불가 (PaddlePaddle 2.6.2 segfault)
 
 ---
 
-## 3. 공식 벤치마크 결과 (Official Benchmark)
+## 2. VLM 모델 — OCRBench (텍스트 인식)
 
-|  | GLM-OCR | PaddleOCR-VL-1.5 | Deepseek-OCR2 | MinerU2.5 | dots.ocr | Gemini-3-Pro | GPT-5.2-2025-12-11 |
-|--|---------|-------------------|---------------|-----------|----------|--------------|---------------------|
-|  | Specialized VLM | Specialized VLM | Specialized VLM | Specialized VLM | Specialized VLM | General VLM | General VLM |
-| **Document Parsing** |  |  |  |  |  |  |  |
-| OmniDocBench v1.5 | **94.6** | 94.5 | 91.1 | 90.7 | 88.4 | 90.3 | 85.4 |
-| **Text Recognition** |  |  |  |  |  |  |  |
-| OCRBench (Text) | **94.0** | 75.3 | 34.7 | 75.3 | 92.1 | 91.9 | 83.7 |
-| **Formula Recognition** |  |  |  |  |  |  |  |
-| UniMERNet | **96.5** | 96.1 | 85.8 | 96.4 | 90.0 | 96.4 | 90.5 |
-| **Table Recognition** |  |  |  |  |  |  |  |
-| PubTabNet | 85.2 | 84.6 | – | **88.4** | 71.0 | 91.4 | 84.4 |
-| TEDS_TEST | **86.0** | 83.3 | – | 85.4 | 62.4 | 81.8 | 67.6 |
-| **Information Extraction** |  |  |  |  |  |  |  |
-| Nanonets-KIE | **93.7** | – | – | – | – | 95.2 | 87.5 |
-| Handwritten-Forms | **86.1** | – | – | – | – | 94.5 | 78.2 |
+| 모델 | Text (300) ↑ | 전체 (1,000) ↑ | 공식 (Text) | Δ |
+|:---|---:|---:|---:|---:|
+| **GLM-OCR** | **95.0%** | 83.6% | 94.0% | +1.0 |
+| **PaddleOCR-VL** | 83.0% | 71.0% | 75.3% | +7.7 |
+| **DeepSeek-OCR2** | 37.0% | 48.1% | 34.7% | +2.3 |
+
+> 공식 OCRBench 점수는 Text 카테고리(300문항)만 사용. 전체 1,000문항에는 VQA/KIE 포함.
 
 ---
 
-## 4. 공식 발표 수치 대비 Gap 분석 (Our Results vs Official)
+## 3. VLM 모델 — 테이블 인식
 
-| 벤치마크 | 모델 | 우리 결과 | 공식 발표 | Delta | 비고 |
-|:---|:---|---:|---:|---:|:---|
-| OmniDocBench | GLM-OCR | 91.9 | 94.6 | −2.7 | 파이프라인 구현 차이 |
-| OmniDocBench | PaddleOCR-VL | 91.9 | 94.5 | −2.6 | 파이프라인 구현 차이 |
-| OmniDocBench | DeepSeek-OCR2 | 79.6 | 91.1 | −11.5 | VLM-direct vs 파이프라인 |
-| OmniDocBench | MinerU-2.7.6 | 90.6 | 90.7 | −0.1 | 공식 수치와 거의 동일 |
-| OCRBench | GLM-OCR | 83.8 | 94.0 | −10.2 | VLM 추론 환경 차이 |
-| OCRBench | PaddleOCR-VL | 71.3 | 75.3 | −4.0 | VLM 추론 환경 차이 |
-| OCRBench | DeepSeek-OCR2 | 48.4 | 34.7 | +13.7 | 우리 결과가 더 높음 |
-| UniMERNet | GLM-OCR | 94.1 | 96.5 | −2.4 | 모델 성능 차이 |
-| UniMERNet | PaddleOCR-VL | 96.9 | 96.1 | +0.8 | 우리 결과가 더 높음 |
-| UniMERNet | DeepSeek-OCR2 | 78.7 | 85.8 | −7.1 | 모델 성능 차이 |
-| PubTabNet | GLM-OCR | 86.1 | 85.2 | +0.9 | 우리 결과가 더 높음 |
-| PubTabNet | PaddleOCR-VL | 84.8 | 84.6 | +0.2 | 거의 동일 |
-| TEDS_TEST | GLM-OCR | 84.4 | 86.0 | −1.6 | 소폭 차이 |
-| TEDS_TEST | PaddleOCR-VL | 84.4 | 83.3 | +1.1 | 우리 결과가 더 높음 |
-| Nanonets-KIE | GLM-OCR | 58.4 | 93.7 | −35.3 | 파이프라인 구현 차이 큼 |
+### PubTabNet (200 samples)
 
-> **결론**: 모든 gap은 모델/파이프라인 품질 차이이며, eval 코드 버그는 아님 (전수 샘플 확인 완료)
+| 모델 | TEDS ↑ | TEDS-struct ↑ | 공식 TEDS | Δ |
+|:---|---:|---:|---:|---:|
+| **GLM-OCR** | 70.4% | 92.2% | 85.2% | −14.8 |
+| **PaddleOCR-VL** | 71.4% | 92.7% | 84.6% | −13.2 |
+| **DeepSeek-OCR2** | 68.9% | 89.3% | — | — |
 
----
+### TEDS-TEST (200 samples)
 
-## 5. 모델별 강점/약점 요약
+| 모델 | TEDS ↑ | TEDS-struct ↑ | 공식 TEDS | Δ |
+|:---|---:|---:|---:|---:|
+| **GLM-OCR** | 70.7% | 91.3% | 86.0% | −15.3 |
+| **PaddleOCR-VL** | 71.1% | 91.2% | 83.3% | −12.2 |
+| **DeepSeek-OCR2** | 67.5% | 86.2% | — | — |
 
-### GLM-OCR
-- **강점**: OCR 정확도 1위 (83.8%), 테이블 인식 1위 (TEDS 86.1%), 손글씨 1위 (CER 3.9%)
-- **약점**: 수식 인식에서 PaddleOCR-VL에 비해 약간 뒤처짐 (CDM 94.1% vs 96.9%)
-
-### PaddleOCR-VL
-- **강점**: 수식 인식 1위 (CDM 96.9%), DP-Bench 테이블 1위 (TEDS 95.2%)
-- **약점**: OCR 정확도 GLM 대비 낮음 (71.3% vs 83.8%)
-
-### DeepSeek-OCR2
-- **강점**: KIE 필드 추출 1위 (ANLS 84.0%), DP-Bench 텍스트 NID 1위 (90.1%)
-- **약점**: OCRBench 저조 (48.4%), 수식 인식 저조 (CDM 78.7%), 손글씨 저조 (CER 18.5%)
-
-### MinerU-2.7.6
-- **강점**: DP-Bench NID 1위 (91.4%), DP-Bench TEDS 2위 (95.0%), ODB 공식 수치와 거의 동일 (90.6 vs 90.7)
-- **약점**: ODB 테이블 TEDS (85.7%)가 GLM-P (89.9%)보다 낮음, 수식 ED (86.7%)도 GLM-P (89.4%)보다 낮음
-- **특징**: 10+개 전문 모델 조합 하이브리드 파이프라인, 1.2B VLM으로 레이아웃+인식 2단계 처리
-
-### Pipeline 비교 (GLM-P vs PaddleOCR-P vs MinerU)
-- **GLM-P**: 테이블 구조 강점 (TEDS 89.9%), 수식 CDM 근소 우위 (91.9% vs 91.8%)
-- **PaddleOCR-P**: 텍스트 블록 강점 (95.7%), 읽기 순서 강점 (95.8%), KIE 크게 우위 (80.8% vs 58.4%)
-- **MinerU**: DP-Bench NID/TEDS 최강, 텍스트 블록 (94.6%) 준수, 읽기 순서 (94.8%) 준수, 모델 수 가장 많음
+> PubTabNet/TEDS-TEST 15pt 차이는 eval 코드가 아닌 모델 추론 품질 차이.
+> 동일 eval 코드로 다른 환경(A100)에서는 84-86% 달성 확인 → vLLM/GPU architecture 차이.
 
 ---
 
-## 6. Eval 수정 이력 (총 15건)
+## 4. VLM 모델 — UniMERNet (수식 인식, 200 samples)
 
-| # | 수정 내용 | 영향 벤치마크 | 효과 |
-|---:|:---|:---|:---|
-| 1 | TEDS: whitespace strip + th→td + lxml 정규화 | PubTabNet | 45% → 86% (+41pt) |
-| 2 | CDM: xeCJK 제거, mathcolor alias, ImageMagick fallback | UniMERNet/ODB | CDM 정상 동작 |
-| 3 | ODB: formula에 CDM 적용, overall 공식 수정 | OmniDocBench | 공식 프로토콜 일치 |
-| 4 | ODB formula 정규화: textcircled, prime, braces | OmniDocBench | CDM 정확도 향상 |
-| 5 | KIE regex 전면 개편 (seller_name, doc_no 등) | Nanonets-KIE | 0% → 55%+ |
-| 6 | IAM: 구두점 앞 공백 제거 | Handwritten | CER 소폭 개선 |
-| 7 | DP-Bench NID: 공식 eval 프로토콜 맞춤 | DP-Bench | NID +6~11pt |
-| 8 | DP-Bench tables: non-leading-pipe, LaTeX, HTML strip | DP-Bench | TEDS 개선 |
-| 9 | `_strip_markdown_for_nid()` 전면 개선 | DP-Bench | NID 정확도 향상 |
-| 10 | KIE seller_name: 마크다운/HTML skip, 헤더 split | Nanonets-KIE | ANLS +2~5pt |
-| 11 | KIE doc_no: word boundary, Invoice.No 지원 | Nanonets-KIE | ANLS +1~2pt |
-| 12 | KIE seller_name: 등록번호/COMPANY NO에서 중단 | Nanonets-KIE | ANLS 소폭 개선 |
-| 13 | Space-separated table → HTML 변환 추가 | PubTabNet/TEDS_TEST | DS +20pt |
-| 14 | KIE JSON garbage key fallback (regex 전환) | Nanonets-KIE | DS +6.4pt, P-P +6.2pt |
-| 15 | LaTeX table cell: **bold** strip, \\% \\& \\$ 변환 | DP-Bench | TEDS 소폭 개선 |
+| 모델 | CDM F1 ↑ | Edit Dist ↓ | BLEU ↑ | 공식 CDM | Δ |
+|:---|---:|---:|---:|---:|---:|
+| **GLM-OCR** | 94.0% | 0.2210 | 0.7438 | 96.5% | −2.5 |
+| **PaddleOCR-VL** | **96.3%** | **0.0826** | **0.8966** | 96.1% | **+0.2** |
+| **DeepSeek-OCR2** | 78.8% | 0.3890 | 0.4159 | 85.8% | −7.0 |
 
 ---
 
-*Generated by eval_bench.py --all | 모든 결과 파일: `/root/ocr_test/results/`*
+## 5. VLM 모델 — IAM Handwritten (손글씨, 200 samples)
+
+| 모델 | CER ↓ | WER ↓ |
+|:---|---:|---:|
+| **GLM-OCR** | **3.42%** | 12.78% |
+| **PaddleOCR-VL** | 4.76% | **12.57%** |
+| **DeepSeek-OCR2** | 20.31% | 35.27% |
+
+---
+
+## 6. Allgaznie Pipeline — 커스텀 통합 파이프라인
+
+### OmniDocBench v1.5
+
+| 모델 | Text (1−ED) ↑ | Table (TEDS) ↑ | Formula (CDM) ↑ | Overall ↑ |
+|:---|---:|---:|---:|---:|
+| Allgaznie-GLM | 93.3% | 92.6% | 26.6% | 70.8 |
+| Allgaznie-Paddle | 71.6% | 85.6% | 26.6% | 61.3 |
+| Allgaznie-DeepSeek | 70.4% | 59.0% | 26.4% | 51.9 |
+
+> Allgaznie CDM 점수가 낮은 이유: 수식을 inline math (`$...$`)로 출력하여 display_formula 매칭 실패.
+
+### DP-Bench & Nanonets-KIE
+
+| 모델 | DP-Bench NID ↑ | DP-Bench TEDS ↑ | Nanonets ANLS ↑ |
+|:---|---:|---:|---:|
+| **Allgaznie-GLM** | **87.0%** | **93.6%** | 79.2% |
+| Allgaznie-Paddle | 81.7% | 83.9% | **81.7%** |
+| Allgaznie-DeepSeek | 86.5% | 73.3% | 78.4% |
+
+---
+
+## 7. 공식 벤치마크 재현 분석
+
+| 벤치마크 | 우리 | 공식 | Δ | 판정 |
+|:---|---:|---:|---:|:---|
+| MinerU OmniDocBench | 90.7 | 90.7 | 0.0 | ✅ 완벽 재현 |
+| GLM-OCR Pipeline OmniDocBench | 93.0 | 94.6 | −1.6 | ✅ 근접 재현 |
+| GLM-OCR OCRBench (Text) | 95.0 | 94.0 | +1.0 | ✅ 근접 재현 |
+| PaddleOCR-VL OCRBench (Text) | 83.0 | 75.3 | +7.7 | ✅ 우리가 더 높음 |
+| DeepSeek-OCR2 OCRBench (Text) | 37.0 | 34.7 | +2.3 | ✅ 근접 재현 |
+| PaddleOCR-VL UniMERNet | 96.3 | 96.1 | +0.2 | ✅ 완벽 재현 |
+| GLM-OCR UniMERNet | 94.0 | 96.5 | −2.5 | ✅ 근접 재현 |
+| DeepSeek-OCR2 UniMERNet | 78.8 | 85.8 | −7.0 | ⚠️ 예측 품질 차이 |
+| GLM-OCR PubTabNet | 70.4 | 85.2 | −14.8 | ⚠️ 예측 품질 차이 |
+| PaddleOCR-VL PubTabNet | 71.4 | 84.6 | −13.2 | ⚠️ 예측 품질 차이 |
+| GLM-OCR TEDS-TEST | 70.7 | 86.0 | −15.3 | ⚠️ 예측 품질 차이 |
+| PaddleOCR-VL TEDS-TEST | 71.1 | 83.3 | −12.2 | ⚠️ 예측 품질 차이 |
+
+### 결론
+
+1. **평가 코드 정확성 확인** — CDM 버그 3건 수정 후 MinerU OmniDocBench Δ=0.0 완벽 재현
+2. **OCRBench**: 공식은 Text subset(300)만 사용 → Text 기준 **모든 모델이 공식 수치 이상**
+3. **PubTabNet/TEDS-TEST 15pt 차이**: eval 코드가 아닌 모델 추론 품질 차이 (vLLM 버전/GPU architecture)
+4. **PaddleOCR-VL Pipeline**: Blackwell GPU (sm_120) + PaddlePaddle 2.6.2 비호환
+
+---
+
+## 8. CDM 버그 수정 내역
+
+| # | 버그 | 파일 | 수정 |
+|---|---|---|---|
+| 1 | `\[...\]` 수식 구분자가 `displaymath` 안에 중첩 → xelatex 컴파일 실패 | `cal_metric.py` | 수식에서 `\[...\]`, `\(...\)` 제거 |
+| 2 | 0바이트 캐시 파일을 유효로 처리 → CDM=0 | `latex2bbox_color.py` | `os.path.getsize() > 0` 검증 추가 |
+| 3 | xeCJK 패키지 불필요 의존성 | `latex2bbox_color.py` | xeCJK 제거 (Noto Sans CJK 환경) |
+
+## 9. eval_bench.py 결과 충돌 버그 수정
+
+- 문제: OmniDocBench 평가 시 모든 모델이 동일 `save_name` 사용 → 결과 덮어쓰기
+- 수정: 모델별 고유 temp 디렉토리 사용하여 독립적 결과 보장

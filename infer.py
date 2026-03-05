@@ -308,7 +308,7 @@ def run_infer_benchmark(
 
     # Sequential inference loop for server-based backends
     CONSECUTIVE_ERROR_LIMIT = 3
-    MAX_TOTAL_TIMEOUTS = 50
+    MAX_TOTAL_TIMEOUTS = 500  # High for pipelines with genuine parse failures (e.g., MinerU)
 
     desc = f"{model_config.name} | {bench_cfg.name}"
     pbar = tqdm(remaining, desc=desc, unit="sample")

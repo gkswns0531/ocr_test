@@ -10,6 +10,8 @@ import httpx
 from openai import OpenAI
 from PIL import Image
 
+from allgaznie.preprocess import smart_resize
+
 
 # Per-region prompts by model family
 REGION_PROMPTS: dict[str, dict[str, str]] = {
@@ -38,10 +40,24 @@ _MODEL_ID_TO_DISPLAY: dict[str, str] = {
 }
 
 
-def _image_to_base64_jpeg(image: Image.Image) -> str:
-    """Single-pass JPEG encode + base64 (OPT-008)."""
+def _image_to_base64_jpeg(
+    image: Image.Image,
+    min_pixels: int = 12544,
+    max_pixels: int = 1003520,
+) -> str:
+    """Smart resize + single-pass JPEG encode + base64.
+
+    Applies SDK-compatible smart_resize to ensure image dimensions are
+    aligned to patch size (28) and within pixel limits before encoding.
+    """
     if image.mode in ("RGBA", "LA", "P"):
         image = image.convert("RGB")
+
+    w, h = image.size
+    new_h, new_w = smart_resize(h, w, min_pixels=min_pixels, max_pixels=max_pixels)
+    if (new_h, new_w) != (h, w):
+        image = image.resize((new_w, new_h), Image.Resampling.BICUBIC)
+
     buf = io.BytesIO()
     image.save(buf, format="JPEG", quality=95)
     return base64.b64encode(buf.getvalue()).decode("utf-8")
@@ -55,12 +71,24 @@ class VLMClient:
         base_url: str,
         model_name: str,
         model_display_name: str | None = None,
-        max_tokens: int = 4096,
+        max_tokens: int = 8192,
         max_workers: int = 16,
+        temperature: float = 0.1,
+        top_p: float = 0.1,
+        top_k: int = 1,
+        repetition_penalty: float = 1.1,
+        min_pixels: int = 12544,
+        max_pixels: int = 1003520,
     ) -> None:
         self.model_name = model_name
         self.max_tokens = max_tokens
         self.max_workers = max_workers
+        self.temperature = temperature
+        self.top_p = top_p
+        self.top_k = top_k
+        self.repetition_penalty = repetition_penalty
+        self.min_pixels = min_pixels
+        self.max_pixels = max_pixels
 
         # Resolve display name for prompt selection
         if model_display_name:
@@ -79,7 +107,7 @@ class VLMClient:
     def _infer_one(self, crop: Image.Image, task: str) -> str:
         """Send a single region to the VLM server. Returns recognized text."""
         prompt = self.prompts.get(task, self.prompts["text"])
-        b64 = _image_to_base64_jpeg(crop)
+        b64 = _image_to_base64_jpeg(crop, min_pixels=self.min_pixels, max_pixels=self.max_pixels)
 
         messages = [
             {
@@ -95,7 +123,12 @@ class VLMClient:
                 model=self.model_name,
                 messages=messages,
                 max_tokens=self.max_tokens,
-                temperature=0.0,
+                temperature=self.temperature,
+                top_p=self.top_p,
+                extra_body={
+                    "top_k": self.top_k,
+                    "repetition_penalty": self.repetition_penalty,
+                },
             )
             return resp.choices[0].message.content or ""
         except Exception as e:

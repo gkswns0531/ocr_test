@@ -326,9 +326,9 @@ _XELATEX_FORMULA_TEMPLATE = r"""
 \usepackage{amssymb}
 \usepackage{xcolor}
 \usepackage{xeCJK}
-\setCJKmainfont{Source Han Sans SC}
-\setCJKsansfont{Source Han Sans SC}
-\setCJKmonofont{Source Han Sans SC}
+\setCJKmainfont{Noto Sans CJK SC}
+\setCJKsansfont{Noto Sans CJK SC}
+\setCJKmonofont{Noto Sans CJK SC}
 \xeCJKsetup{CJKmath=true}
 \begin{document}
 \makeatletter
@@ -393,7 +393,7 @@ def _ensure_cdm_patches():
 def compute_cdm(pred_latex: str, gt_latex: str, img_id: str = "0") -> dict[str, float]:
     """CDM score using official OmniDocBench CDM implementation.
 
-    Requires xelatex + ImageMagick installed. Uses CJK fonts (Source Han Sans SC)
+    Requires xelatex + ImageMagick installed. Uses CJK fonts (Noto Sans CJK SC)
     for proper rendering of formulas containing Chinese characters.
     Returns dict with 'recall', 'precision', 'F1_score'.
     Each call uses a fresh temp directory to avoid stale cached bbox files.

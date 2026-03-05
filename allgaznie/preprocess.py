@@ -1,7 +1,8 @@
-"""Image preprocessing: GPU/CPU decode+resize for layout, region cropping."""
+"""Image preprocessing: GPU/CPU decode+resize for layout, region cropping with polygon masking, smart_resize."""
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import cv2
@@ -98,13 +99,14 @@ def crop_regions(
     detections: list,
     image_path: str | None = None,
 ) -> list[Image.Image]:
-    """Crop detected regions from the original image.
+    """Crop detected regions from the original image with optional polygon masking.
 
-    Uses cv2.imread once (if path available) to avoid repeated PIL→numpy conversion.
+    Uses cv2.imread once (if path available) to avoid repeated PIL->numpy conversion.
+    When a detection has polygon points, fills the area outside the polygon with white.
 
     Args:
         image: Original PIL image.
-        detections: List of Detection objects with .bbox (x1,y1,x2,y2 pixel coords).
+        detections: List of Detection objects with .bbox and .polygon.
         image_path: Optional file path for fast cv2 read.
 
     Returns:
@@ -116,12 +118,69 @@ def crop_regions(
         rgb = image if image.mode == "RGB" else image.convert("RGB")
         arr = np.asarray(rgb)
 
-    crops: list[Image.Image] = []
+    crops: list[Image.Image | None] = []
     for det in detections:
         x1, y1, x2, y2 = det.bbox
         region = arr[y1:y2, x1:x2]
         if region.size == 0:
             crops.append(None)
+            continue
+
+        # Apply polygon masking if polygon is available
+        polygon = getattr(det, "polygon", None)
+        if polygon and len(polygon) >= 3:
+            crop_h, crop_w = region.shape[:2]
+            # Convert polygon points to crop-relative coordinates
+            poly_points = np.array([[p[0] - x1, p[1] - y1] for p in polygon], dtype=np.int32)
+            # Create mask
+            mask = np.zeros((crop_h, crop_w), dtype=np.uint8)
+            cv2.fillPoly(mask, [poly_points], 1)
+            # Apply mask: fill outside polygon with white
+            output = np.full_like(region, 255, dtype=np.uint8)
+            cv2.copyTo(region, mask, output)
+            crops.append(Image.fromarray(output.copy()))
         else:
             crops.append(Image.fromarray(region.copy()))
+
     return crops
+
+
+def smart_resize(
+    h: int,
+    w: int,
+    h_factor: int = 28,
+    w_factor: int = 28,
+    min_pixels: int = 12544,
+    max_pixels: int = 1003520,
+) -> tuple[int, int]:
+    """Smart resize matching the GLM-OCR SDK's smart_resize logic.
+
+    Ensures:
+    1. Height and width are divisible by the given factors
+    2. Total pixels are within [min_pixels, max_pixels]
+    3. Keeps aspect ratio as much as possible
+
+    Args:
+        h: Original height.
+        w: Original width.
+        h_factor: Height factor (must be divisible).
+        w_factor: Width factor (must be divisible).
+        min_pixels: Minimum total pixels.
+        max_pixels: Maximum total pixels.
+
+    Returns:
+        (new_h, new_w)
+    """
+    h_bar = round(h / h_factor) * h_factor
+    w_bar = round(w / w_factor) * w_factor
+
+    if h_bar * w_bar > max_pixels:
+        beta = math.sqrt((h * w) / max_pixels)
+        h_bar = math.floor(h / beta / h_factor) * h_factor
+        w_bar = math.floor(w / beta / w_factor) * w_factor
+    elif h_bar * w_bar < min_pixels:
+        beta = math.sqrt(min_pixels / (h * w))
+        h_bar = math.ceil(h * beta / h_factor) * h_factor
+        w_bar = math.ceil(w * beta / w_factor) * w_factor
+
+    return h_bar, w_bar

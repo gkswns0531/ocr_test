@@ -169,15 +169,12 @@ def eval_omnidocbench(model_key: str) -> dict | None:
 
     print(f"[Evaluate] Found {len(md_files)} prediction .md files for OmniDocBench")
 
-    # Apply post-processing to prediction files before evaluation:
-    # 1. DeepSeek: official post-processing (clean formulas, remove grounding tags)
-    # 2. All models: convert PaddleOCR-VL <fcel> table format to HTML
-    # Use a temp directory with processed copies so we don't modify originals
-    postproc_dir = None
+    # Always create a model-specific symlink/copy directory so each model gets
+    # unique save_name in OmniDocBench results (pdf_validation.py uses basename as key).
+    postproc_dir = Path(tempfile.mkdtemp(prefix=f"eval_{model_dir}_"))
     needs_postproc = "deepseek" in model_key or _any_file_contains_fcel(md_files)
     if needs_postproc:
         from benchmarks import _convert_paddle_table_to_html
-        postproc_dir = Path(tempfile.mkdtemp(prefix="eval_postproc_"))
         postproc_types = []
         if "deepseek" in model_key:
             postproc_types.append("DeepSeek cleanup")
@@ -189,7 +186,11 @@ def eval_omnidocbench(model_key: str) -> dict | None:
                 text = _postprocess_deepseek(text)
             text = _convert_fcel_tables_in_markdown(text, _convert_paddle_table_to_html)
             (postproc_dir / md_file.name).write_text(text, encoding="utf-8")
-        pred_dir = postproc_dir
+    else:
+        # Symlink all prediction files into model-specific temp dir
+        for md_file in md_files:
+            (postproc_dir / md_file.name).symlink_to(md_file)
+    pred_dir = postproc_dir
 
     # Get GT JSON path (cached by huggingface_hub)
     gt_json_path = hf_hub_download(
@@ -213,6 +214,10 @@ def eval_omnidocbench(model_key: str) -> dict | None:
             },
         }
     }
+
+    # Capture pred_dir_name before try/finally (temp dir name is unique per model)
+    pred_dir_name = Path(pred_dir).name
+    save_name = f"{pred_dir_name}_quick_match"
 
     config_path = None
     try:
@@ -251,11 +256,6 @@ def eval_omnidocbench(model_key: str) -> dict | None:
         if postproc_dir and postproc_dir.exists():
             import shutil
             shutil.rmtree(postproc_dir, ignore_errors=True)
-
-    # Read results from OmniDocBench's result/ directory
-    # save_name = basename(prediction_data_path) + "_" + match_method
-    pred_dir_name = Path(pred_dir).name  # "omnidocbench" or temp dir name like "eval_postproc_xxx"
-    save_name = f"{pred_dir_name}_quick_match"
     metric_path = OMNIDOCBENCH_ROOT / "result" / f"{save_name}_metric_result.json"
 
     if not metric_path.exists():

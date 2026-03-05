@@ -43,8 +43,14 @@ class AllgaznieConfig:
     vlm: str = "glm-ocr"  # "glm-ocr" | "paddleocr-vl" | "deepseek-ocr2"
     vlm_model_id: str = ""  # Auto-resolved from vlm key if empty
     vlm_port: int = 8000
-    vlm_max_tokens: int = 4096
+    vlm_max_tokens: int = 8192
     vlm_max_workers: int = 16
+    vlm_temperature: float = 0.1
+    vlm_top_p: float = 0.1
+    vlm_top_k: int = 1
+    vlm_repetition_penalty: float = 1.1
+    vlm_min_pixels: int = 12544
+    vlm_max_pixels: int = 1003520
     layout_model_id: str = "PaddlePaddle/PP-DocLayoutV3_safetensors"
     layout_threshold: float = 0.3
     layout_device: str = "cuda"
@@ -98,6 +104,12 @@ class AllgaznieOCR:
             model_display_name=display_name,
             max_tokens=config.vlm_max_tokens,
             max_workers=config.vlm_max_workers,
+            temperature=config.vlm_temperature,
+            top_p=config.vlm_top_p,
+            top_k=config.vlm_top_k,
+            repetition_penalty=config.vlm_repetition_penalty,
+            min_pixels=config.vlm_min_pixels,
+            max_pixels=config.vlm_max_pixels,
         )
 
     def parse(self, image_path: str) -> PageResult:
@@ -183,7 +195,7 @@ class AllgaznieOCR:
         else:
             texts = []
 
-        # Build regions list in original detection order
+        # Build regions list in original detection order (reading order from layout)
         regions: list[dict] = []
         vlm_idx = 0
         for d in detections:

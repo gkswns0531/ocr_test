@@ -21,7 +21,7 @@ from config import ModelConfig
 # Hard timeout (seconds) for a single inference call.
 HARD_TIMEOUT = 120
 
-# Default max_tokens per model (override the global 4096 default)
+# Default max_tokens per model (override the global 8192 default)
 MODEL_MAX_TOKENS: dict[str, int] = {
     "DeepSeek-OCR2": 8192,
 }
@@ -39,7 +39,7 @@ class VLLMOCRClient:
             timeout=httpx.Timeout(connect=10, read=timeout, write=30, pool=10),
         )
 
-    def infer(self, image: Image.Image, prompt: str, max_tokens: int = 4096) -> tuple[str, float]:
+    def infer(self, image: Image.Image, prompt: str, max_tokens: int = 8192) -> tuple[str, float]:
         """Run inference with thread-based hard timeout. Returns (text, latency_ms)."""
         b64 = _image_to_base64(image)
         result_holder: list[str | Exception] = []
@@ -85,7 +85,7 @@ class VLLMOCRClient:
         self,
         images: list[Image.Image],
         prompts: list[str],
-        max_tokens: int = 4096,
+        max_tokens: int = 8192,
         max_workers: int = 1,
     ) -> list[tuple[str, float]]:
         """Send multiple inference requests concurrently via ThreadPoolExecutor.
@@ -116,42 +116,57 @@ class MinerUClient:
     """Client that wraps MinerU's do_parse pipeline."""
 
     def __init__(self) -> None:
-        mineru_path = "/home/ubuntu/junghoon/miner_test/MinerU"
-        if mineru_path not in sys.path:
-            sys.path.insert(0, mineru_path)
-        self._parse_fn = None
+        # Patch transformers 5.x compat: find_pruneable_heads_and_indices was removed
+        import transformers.pytorch_utils as _tpu
+        if not hasattr(_tpu, 'find_pruneable_heads_and_indices'):
+            def _find_pruneable_heads_and_indices(heads, n_heads, head_size, already_pruned_heads):
+                import torch
+                mask = torch.ones(n_heads, head_size)
+                heads = set(heads) - already_pruned_heads
+                for head in heads:
+                    head -= sum(1 if h < head else 0 for h in already_pruned_heads)
+                    mask[head] = 0
+                return heads, mask.view(-1).contiguous().eq(1).nonzero().squeeze()
+            _tpu.find_pruneable_heads_and_indices = _find_pruneable_heads_and_indices
 
-    def _get_parse_fn(self):
-        if self._parse_fn is None:
-            from demo.demo import do_parse  # type: ignore
-            self._parse_fn = do_parse
-        return self._parse_fn
+        from mineru.cli.common import do_parse, read_fn
+        from mineru.utils.enum_class import MakeMode
+        self._do_parse = do_parse
+        self._read_fn = read_fn
+        self._make_mode = MakeMode.MM_MD
 
-    def infer(self, image: Image.Image, prompt: str, max_tokens: int = 4096) -> tuple[str, float]:
+    def infer(self, image: Image.Image, prompt: str, max_tokens: int = 8192) -> tuple[str, float]:
         """Save image as temp file, run MinerU parse, return (markdown, latency_ms)."""
         t0 = time.time()
         with tempfile.TemporaryDirectory() as tmpdir:
             img_path = Path(tmpdir) / "input.png"
+            if image.mode in ("RGBA", "LA", "P"):
+                image = image.convert("RGB")
             image.save(str(img_path))
             out_dir = Path(tmpdir) / "output"
             out_dir.mkdir()
             try:
-                parse_fn = self._get_parse_fn()
-                parse_fn(
-                    str(img_path),
-                    str(out_dir),
-                    backend="pipeline",
+                pdf_bytes = self._read_fn(img_path)
+                self._do_parse(
+                    output_dir=str(out_dir),
+                    pdf_file_names=["input"],
+                    pdf_bytes_list=[pdf_bytes],
+                    p_lang_list=["ch"],
+                    backend="hybrid-auto-engine",
                     parse_method="auto",
+                    f_draw_layout_bbox=False,
+                    f_draw_span_bbox=False,
+                    f_dump_orig_pdf=False,
+                    f_dump_middle_json=False,
+                    f_dump_model_output=False,
+                    f_dump_content_list=False,
+                    f_dump_md=True,
+                    f_make_md_mode=self._make_mode,
                 )
                 latency_ms = (time.time() - t0) * 1000
-                # Find the markdown output
-                md_files = list(out_dir.rglob("*.md"))
+                md_files = list(Path(out_dir).rglob("*.md"))
                 if md_files:
                     return md_files[0].read_text(encoding="utf-8"), latency_ms
-                # Fall back to any text output
-                json_files = list(out_dir.rglob("*content_list.json"))
-                if json_files:
-                    return json_files[0].read_text(encoding="utf-8"), latency_ms
                 return "", latency_ms
             except Exception as e:
                 latency_ms = (time.time() - t0) * 1000
@@ -167,7 +182,7 @@ class GLMOCRPipelineClient:
         from glmocr import GlmOcr
 
         # Copy default config and override only the port/host
-        default_cfg = Path("/home/ubuntu/glm-ocr-sdk/glmocr/config.yaml")
+        default_cfg = Path("/tmp/GLM-OCR/glmocr/config.yaml")
         self._config_dir = Path(tempfile.mkdtemp())
         config_path = self._config_dir / "config.yaml"
         shutil.copy(default_cfg, config_path)
@@ -178,9 +193,6 @@ class GLMOCRPipelineClient:
         text = config_path.read_text()
         text = text.replace("api_port: 8080", f"api_port: {vllm_port}")
         text = text.replace("level: INFO", "level: WARNING")
-        text = text.replace("max_workers: 32", "max_workers: 1")
-        text = text.replace("request_timeout: 120", "request_timeout: 60")
-        text = text.replace("retry_max_attempts: 2", "retry_max_attempts: 1")
         config_path.write_text(text)
 
         self._config_path = str(config_path)
@@ -191,7 +203,7 @@ class GLMOCRPipelineClient:
     # Hard timeout for a single page (seconds).
     PIPELINE_HARD_TIMEOUT = 300
 
-    def infer(self, image: Image.Image, prompt: str, max_tokens: int = 4096) -> tuple[str, float]:
+    def infer(self, image: Image.Image, prompt: str, max_tokens: int = 8192) -> tuple[str, float]:
         """Save image to temp file, run full pipeline, return (markdown, latency_ms).
 
         Uses original image resolution (official protocol — no resizing).
@@ -277,7 +289,7 @@ class PaddleOCRVLPipelineClient:
         from paddleocr import PaddleOCRVL
         self._pipeline = PaddleOCRVL(pipeline_version="v1.5")
 
-    def infer(self, image: Image.Image, prompt: str, max_tokens: int = 4096) -> tuple[str, float]:
+    def infer(self, image: Image.Image, prompt: str, max_tokens: int = 8192) -> tuple[str, float]:
         """Save image to temp file, run full pipeline, return (markdown, latency_ms).
 
         Uses original image resolution (official protocol — no resizing).
@@ -448,7 +460,7 @@ class AllgaznieClient:
         }
         return mapping.get(model_id, "glm-ocr")
 
-    def infer(self, image: Image.Image, prompt: str, max_tokens: int = 4096) -> tuple[str, float]:
+    def infer(self, image: Image.Image, prompt: str, max_tokens: int = 8192) -> tuple[str, float]:
         """Run full pipeline on a single image. Returns (markdown, latency_ms)."""
         result = self._pipeline.parse_image(image)
         return result.markdown, result.latency_ms
