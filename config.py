@@ -8,8 +8,9 @@ from pathlib import Path
 class ModelConfig:
     name: str
     model_id: str
-    backend: str  # "vllm", "mineru", "glmocr_pipeline", "paddleocr_pipeline"
+    backend: str  # "vllm", "mineru", "glmocr_pipeline", "paddleocr_pipeline", "allgaznie"
     vllm_args: list[str] = field(default_factory=list)
+    env: dict[str, str] = field(default_factory=dict)
     port: int = 8000
 
 
@@ -34,6 +35,7 @@ MODELS: dict[str, ModelConfig] = {
             "--no-enable-prefix-caching",
             "--mm-processor-cache-gb", "0",
             "--max-num-batched-tokens", "16384",
+            "--max-model-len", "16384",
         ],
     ),
     "deepseek-ocr2": ModelConfig(
@@ -67,6 +69,46 @@ MODELS: dict[str, ModelConfig] = {
         name="PaddleOCR-VL-Pipeline",
         model_id="PaddlePaddle/PaddleOCR-VL",
         backend="paddleocr_pipeline",
+    ),
+    "allgaznie-glm": ModelConfig(
+        name="Allgaznie-GLM",
+        model_id="zai-org/GLM-OCR",
+        backend="allgaznie",
+        vllm_args=[
+            "--trust-remote-code",
+            "--no-enable-prefix-caching",
+            "--mm-processor-cache-gb", "0",
+            "--max-model-len", "16384",
+            "--max-num-batched-tokens", "65536",
+            "--max-num-seqs", "1024",
+            "--gpu-memory-utilization", "0.85",
+            "--quantization", "fp8",
+        ],
+    ),
+    "allgaznie-paddle": ModelConfig(
+        name="Allgaznie-Paddle",
+        model_id="PaddlePaddle/PaddleOCR-VL",
+        backend="allgaznie",
+        vllm_args=[
+            "--trust-remote-code",
+            "--no-enable-prefix-caching",
+            "--mm-processor-cache-gb", "0",
+            "--max-num-batched-tokens", "16384",
+            "--max-model-len", "16384",
+            "--gpu-memory-utilization", "0.85",
+        ],
+    ),
+    "allgaznie-deepseek": ModelConfig(
+        name="Allgaznie-DeepSeek",
+        model_id="deepseek-ai/DeepSeek-OCR-2",
+        backend="allgaznie",
+        vllm_args=[
+            "--trust-remote-code",
+            "--max-model-len", "8192",
+            "--max-num-seqs", "16",
+            "--gpu-memory-utilization", "0.85",
+            "--quantization", "fp8",
+        ],
     ),
 }
 
@@ -148,9 +190,9 @@ BENCHMARKS: dict[str, BenchmarkConfig] = {
     ),
 }
 
-RESULTS_DIR = Path("/home/ubuntu/ocr_test/results")
-DATA_CACHE_DIR = Path("/home/ubuntu/ocr_test/data_cache")
-PREPARED_DIR = Path("/home/ubuntu/ocr_test/prepared_datasets")
+RESULTS_DIR = Path("/root/ocr_test/results")
+DATA_CACHE_DIR = Path("/root/ocr_test/data_cache")
+PREPARED_DIR = Path("/root/ocr_test/prepared_datasets")
 
 # Ensure directories exist
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)

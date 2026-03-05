@@ -17,7 +17,7 @@ from rapidfuzz.distance import Levenshtein
 # metrics.py (this file) shadows the OmniDocBench `metrics` package,
 # so `from metrics.table_metric import TEDS` resolves to this file.
 # Use importlib.util.spec_from_file_location to load directly by path.
-_OMNIDOCBENCH_METRICS = "/home/ubuntu/OmniDocBench/metrics"
+_OMNIDOCBENCH_METRICS = "/root/OmniDocBench/metrics"
 
 
 def _load_omnidoc_module(name: str, filename: str):

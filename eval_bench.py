@@ -28,8 +28,8 @@ from pathlib import Path
 
 from config import BENCHMARKS, MODELS, PREPARED_DIR, RESULTS_DIR
 
-PREDICTIONS_DIR = Path("/home/ubuntu/ocr_test/predictions")
-OMNIDOCBENCH_ROOT = Path("/home/ubuntu/OmniDocBench")
+PREDICTIONS_DIR = Path("/root/ocr_test/predictions")
+OMNIDOCBENCH_ROOT = Path("/root/OmniDocBench")
 
 
 def _postprocess_deepseek(text: str) -> str:
@@ -65,6 +65,49 @@ def _postprocess_deepseek(text: str) -> str:
     text = text.replace('\\coloneqq', ':=').replace('\\eqqcolon', '=:')
 
     return text
+
+
+def _any_file_contains_fcel(files: list[Path], sample_size: int = 10) -> bool:
+    """Quick check: do any prediction files contain <fcel> table markers?"""
+    for f in files[:sample_size]:
+        try:
+            if "<fcel>" in f.read_text(encoding="utf-8"):
+                return True
+        except Exception:
+            pass
+    return False
+
+
+def _convert_fcel_tables_in_markdown(text: str, converter) -> str:
+    """Find <fcel> table blocks in markdown text and convert them to HTML.
+
+    A <fcel> table block is a contiguous run of lines containing <fcel>/<ecel>/<lcel>/<ucel>/<nl> markers.
+    Non-table text (headings, paragraphs) is preserved as-is.
+    """
+    if "<fcel>" not in text:
+        return text
+
+    import re
+
+    lines = text.split("\n")
+    result_lines: list[str] = []
+    table_buffer: list[str] = []
+
+    def flush_table() -> None:
+        if table_buffer:
+            table_text = "\n".join(table_buffer)
+            result_lines.append(converter(table_text))
+            table_buffer.clear()
+
+    for line in lines:
+        if re.search(r"<(?:fcel|ecel|lcel|ucel|nl)>", line):
+            table_buffer.append(line)
+        else:
+            flush_table()
+            result_lines.append(line)
+    flush_table()
+
+    return "\n".join(result_lines)
 
 
 def parse_args() -> argparse.Namespace:
@@ -126,15 +169,25 @@ def eval_omnidocbench(model_key: str) -> dict | None:
 
     print(f"[Evaluate] Found {len(md_files)} prediction .md files for OmniDocBench")
 
-    # For DeepSeek models, apply official post-processing to prediction files
-    # Use a temp directory with postprocessed copies so we don't modify originals
+    # Apply post-processing to prediction files before evaluation:
+    # 1. DeepSeek: official post-processing (clean formulas, remove grounding tags)
+    # 2. All models: convert PaddleOCR-VL <fcel> table format to HTML
+    # Use a temp directory with processed copies so we don't modify originals
     postproc_dir = None
-    if "deepseek" in model_key:
-        postproc_dir = Path(tempfile.mkdtemp(prefix="ds_postproc_"))
-        print(f"[Evaluate] Applying DeepSeek post-processing to {len(md_files)} files...")
+    needs_postproc = "deepseek" in model_key or _any_file_contains_fcel(md_files)
+    if needs_postproc:
+        from benchmarks import _convert_paddle_table_to_html
+        postproc_dir = Path(tempfile.mkdtemp(prefix="eval_postproc_"))
+        postproc_types = []
+        if "deepseek" in model_key:
+            postproc_types.append("DeepSeek cleanup")
+        postproc_types.append("fcel→HTML table conversion")
+        print(f"[Evaluate] Applying post-processing ({', '.join(postproc_types)}) to {len(md_files)} files...")
         for md_file in md_files:
             text = md_file.read_text(encoding="utf-8")
-            text = _postprocess_deepseek(text)
+            if "deepseek" in model_key:
+                text = _postprocess_deepseek(text)
+            text = _convert_fcel_tables_in_markdown(text, _convert_paddle_table_to_html)
             (postproc_dir / md_file.name).write_text(text, encoding="utf-8")
         pred_dir = postproc_dir
 
@@ -201,7 +254,8 @@ def eval_omnidocbench(model_key: str) -> dict | None:
 
     # Read results from OmniDocBench's result/ directory
     # save_name = basename(prediction_data_path) + "_" + match_method
-    save_name = f"omnidocbench_quick_match"
+    pred_dir_name = Path(pred_dir).name  # "omnidocbench" or temp dir name like "eval_postproc_xxx"
+    save_name = f"{pred_dir_name}_quick_match"
     metric_path = OMNIDOCBENCH_ROOT / "result" / f"{save_name}_metric_result.json"
 
     if not metric_path.exists():

@@ -290,7 +290,7 @@ def _get_evaluator(bench_cfg: BenchmarkConfig):
 
 # ─── OmniDocBench official evaluation helpers ─────────────────────────
 
-_OMNIDOCBENCH_ROOT = "/home/ubuntu/OmniDocBench"
+_OMNIDOCBENCH_ROOT = "/root/OmniDocBench"
 _omnidoc_path_added = False
 
 
@@ -689,6 +689,30 @@ def _eval_ocrbench(pred: str, gt, metadata: dict) -> dict:
     }
 
 
+def _strip_latex_delimiters(text: str) -> str:
+    """Strip display/inline math delimiters for fair formula comparison.
+
+    Removes \\[...\\], \\(...\\), $$...$$, $...$ wrappers that some models add
+    but GT typically doesn't include. Applied symmetrically to both pred and GT.
+    """
+    import re
+    text = text.strip()
+    # Display math: \[...\] or $$...$$
+    if text.startswith("\\[") and text.endswith("\\]"):
+        text = text[2:-2].strip()
+    elif text.startswith("$$") and text.endswith("$$"):
+        text = text[2:-2].strip()
+    # Inline math: \(...\) or $...$
+    elif text.startswith("\\(") and text.endswith("\\)"):
+        text = text[2:-2].strip()
+    elif text.startswith("$") and text.endswith("$") and not text.startswith("$$"):
+        text = text[1:-1].strip()
+    # Also strip delimiters that appear on separate lines (multi-line output)
+    text = re.sub(r'^\\\[\s*\n', '', text)
+    text = re.sub(r'\n\s*\\\]$', '', text)
+    return text
+
+
 def _eval_formula(pred: str, gt, metadata: dict) -> dict:
     """UniMERNet: Normalized Edit Distance + CDM F1 (per-sample).
 
@@ -702,8 +726,8 @@ def _eval_formula(pred: str, gt, metadata: dict) -> dict:
     """
     from metrics import _normalize_latex
     gt_str = gt if isinstance(gt, str) else str(gt)
-    norm_pred = _normalize_latex(pred)
-    norm_gt = _normalize_latex(gt_str)
+    norm_pred = _normalize_latex(_strip_latex_delimiters(pred))
+    norm_gt = _normalize_latex(_strip_latex_delimiters(gt_str))
 
     # CDM F1 with timeout to prevent hangs
     sample_id = metadata.get("sample_id", str(id(pred)))

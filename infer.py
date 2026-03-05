@@ -29,7 +29,7 @@ from config import BENCHMARKS, MODELS, PREPARED_DIR, ModelConfig
 # VLLMOCRClient resizes for base64 transmission; pipeline SDKs handle internally.
 Image.MAX_IMAGE_PIXELS = None
 
-PREDICTIONS_DIR = Path("/home/ubuntu/ocr_test/predictions")
+PREDICTIONS_DIR = Path("/root/ocr_test/predictions")
 
 
 def parse_args() -> argparse.Namespace:
@@ -54,6 +54,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--seed", type=int, default=42,
         help="Random seed for reproducible dataset sampling",
+    )
+    parser.add_argument(
+        "--warmup", type=int, default=0,
+        help="Number of warmup inferences (excluded from latency measurement)",
     )
     return parser.parse_args()
 
@@ -132,6 +136,121 @@ def _check_server_alive(port: int) -> bool:
         return False
 
 
+def _run_batch_infer(
+    client,
+    model_config: ModelConfig,
+    benchmark_key: str,
+    bench_cfg,
+    remaining: list[dict],
+    out_dir: Path,
+    batch_size: int = 32,
+) -> None:
+    """Batch inference for offline backends (deepseek_offline).
+
+    Loads images in chunks and passes them to client.batch_infer(),
+    letting vLLM's continuous batching maximize GPU utilization.
+    """
+    from tqdm import tqdm
+    from prompts import get_prompt
+
+    total = len(remaining)
+    n_completed = 0
+    total_timeouts = 0
+    t_start = time.time()
+
+    for batch_start in range(0, total, batch_size):
+        batch_samples = remaining[batch_start:batch_start + batch_size]
+        images = []
+        prompts = []
+        pred_paths = []
+        valid_indices = []
+
+        # Prepare batch: load images + prompts
+        for i, sample in enumerate(batch_samples):
+            pred_path = _get_prediction_path(out_dir, benchmark_key, sample)
+            question = sample.get("metadata", {}).get("question")
+            prompt = get_prompt(bench_cfg.prompt_key, question, model_name=model_config.name)
+            try:
+                image = _load_image_original(sample["image_path"])
+            except Exception as e:
+                print(f"[Infer] Failed to load image for {sample['sample_id']}: {e}")
+                pred_path.write_text("", encoding="utf-8")
+                continue
+            images.append(image)
+            prompts.append(prompt)
+            pred_paths.append(pred_path)
+            valid_indices.append(i)
+
+        if not images:
+            continue
+
+        # Batch inference
+        results = client.batch_infer(images, prompts)
+        del images  # Free memory
+
+        # Save predictions
+        for (prediction, latency_ms), pred_path, idx in zip(results, pred_paths, valid_indices):
+            sample = batch_samples[idx]
+
+            if not prediction.strip():
+                total_timeouts += 1
+
+            # Post-process formula benchmarks
+            if benchmark_key == "unimernet" and prediction.strip():
+                p = prediction.strip()
+                if p.startswith("\\[") and p.endswith("\\]"):
+                    prediction = p[2:-2].strip()
+                elif p.startswith("$$") and p.endswith("$$"):
+                    prediction = p[2:-2].strip()
+
+            pred_path.write_text(prediction, encoding="utf-8")
+            n_completed += 1
+
+        done = batch_start + len(batch_samples)
+        elapsed = time.time() - t_start
+        rate = done / elapsed if elapsed > 0 else 0
+        eta = (total - done) / rate if rate > 0 else 0
+        print(f"[Infer] {model_config.name} | {bench_cfg.name}: "
+              f"{done}/{total} ({rate:.1f} samples/s, ETA {eta:.0f}s, errors={total_timeouts})")
+
+    elapsed = time.time() - t_start
+    avg_latency = (elapsed * 1000) / n_completed if n_completed else 0
+    print(f"[Infer] {bench_cfg.name} complete: {n_completed} samples, "
+          f"{total_timeouts} timeouts, avg latency {avg_latency:.0f}ms, "
+          f"total {elapsed:.0f}s")
+
+    # Save latency summary for batch mode
+    latency_path = out_dir / "_latency.json"
+    latency_data = {
+        "model": model_config.name,
+        "benchmark": bench_cfg.name,
+        "n_samples": n_completed,
+        "avg_latency_ms": avg_latency,
+        "total_timeouts": total_timeouts,
+        "total_elapsed_s": elapsed,
+    }
+    with open(latency_path, "w") as f:
+        json.dump(latency_data, f, indent=2)
+
+
+def _run_warmup(client, model_config: ModelConfig, n_warmup: int) -> None:
+    """Run warmup inferences to trigger JIT compilation and CUDA graph capture."""
+    from prompts import get_prompt
+
+    # Use a simple test image for warmup
+    test_img = Image.new("RGB", (800, 600), (200, 200, 200))
+    prompt = get_prompt("document_parse", model_name=model_config.name)
+
+    print(f"[Warmup] Running {n_warmup} warmup inferences...")
+    for i in range(n_warmup):
+        try:
+            _, lat = client.infer(test_img, prompt)
+            print(f"  warmup {i + 1}/{n_warmup}: {lat:.0f}ms")
+        except Exception as e:
+            print(f"  warmup {i + 1}/{n_warmup}: error ({type(e).__name__})")
+    print("[Warmup] Done\n")
+
+
 def run_infer_benchmark(
     model_key: str,
     model_config: ModelConfig,
@@ -145,14 +264,14 @@ def run_infer_benchmark(
 
     Features:
     - Resume support: skips samples with existing prediction files
-    - Consecutive error tracking: restarts server after 3 consecutive failures
-    - Max timeout limit: aborts benchmark after 20 total timeouts
+    - Batch mode for offline backends (deepseek_offline)
+    - Consecutive error tracking for server-based backends
     """
     from tqdm import tqdm
     from prompts import get_prompt
 
     bench_cfg = BENCHMARKS[benchmark_key]
-    needs_server = model_config.backend in ("vllm", "glmocr_pipeline")
+    needs_server = model_config.backend in ("vllm", "glmocr_pipeline", "allgaznie")
 
     # Create output directory
     model_dir_name = model_key.replace("-", "_")
@@ -182,7 +301,12 @@ def run_infer_benchmark(
         print(f"[Infer] All samples already have predictions — skipping {bench_cfg.name}")
         return
 
-    # Inference loop with error tracking
+    # Use batch mode for offline backends
+    if model_config.backend == "deepseek_offline" and hasattr(client, "batch_infer"):
+        _run_batch_infer(client, model_config, benchmark_key, bench_cfg, remaining, out_dir)
+        return
+
+    # Sequential inference loop for server-based backends
     CONSECUTIVE_ERROR_LIMIT = 3
     MAX_TOTAL_TIMEOUTS = 50
 
@@ -192,6 +316,7 @@ def run_infer_benchmark(
     total_timeouts = 0
     total_latency = 0.0
     n_completed = 0
+    latency_records: list[dict] = []
 
     for sample in pbar:
         pred_path = _get_prediction_path(out_dir, benchmark_key, sample)
@@ -229,7 +354,7 @@ def run_infer_benchmark(
                     print(f"\n[Infer] Server dead after {consecutive_errors} consecutive errors — restarting...")
                     server.stop()
                     gc.collect()
-                    time.sleep(3)
+                    time.sleep(5)
                     server.start()
                     from client import create_client as _create
                     client = _create(model_config, port=port)
@@ -240,7 +365,6 @@ def run_infer_benchmark(
 
             if total_timeouts >= MAX_TOTAL_TIMEOUTS:
                 print(f"\n[Infer] {total_timeouts} total timeouts — aborting {bench_cfg.name}")
-                # Save empty prediction for current sample
                 pred_path.write_text(prediction, encoding="utf-8")
                 break
         else:
@@ -257,12 +381,26 @@ def run_infer_benchmark(
         # Save prediction as plain text
         pred_path.write_text(prediction, encoding="utf-8")
         n_completed += 1
+        latency_records.append({"sample_id": sample["sample_id"], "latency_ms": latency_ms})
         pbar.set_postfix(errors=total_timeouts)
 
     pbar.close()
     avg_latency = total_latency / n_completed if n_completed else 0
     print(f"[Infer] {bench_cfg.name} complete: {n_completed} samples, "
           f"{total_timeouts} timeouts, avg latency {avg_latency:.0f}ms")
+
+    # Save per-sample latency to JSON
+    latency_path = out_dir / "_latency.json"
+    latency_data = {
+        "model": model_config.name,
+        "benchmark": bench_cfg.name,
+        "n_samples": n_completed,
+        "avg_latency_ms": avg_latency,
+        "total_timeouts": total_timeouts,
+        "per_sample": latency_records,
+    }
+    with open(latency_path, "w") as f:
+        json.dump(latency_data, f, indent=2)
 
 
 def main() -> None:
@@ -287,7 +425,7 @@ def main() -> None:
 
     # Start server if needed (deepseek_offline loads model inline, no server)
     server = None
-    needs_server = model_config.backend in ("vllm", "glmocr_pipeline")
+    needs_server = model_config.backend in ("vllm", "glmocr_pipeline", "allgaznie")
     if needs_server:
         model_config.port = args.port
         server = VLLMServer(model_config, port=args.port)
@@ -296,6 +434,10 @@ def main() -> None:
     client = None
     try:
         client = create_client(model_config, port=args.port)
+
+        # Warmup: run dummy inferences to trigger JIT/CUDA graph capture
+        if args.warmup > 0:
+            _run_warmup(client, model_config, args.warmup)
 
         for bench_key in benchmark_keys:
             try:

@@ -104,6 +104,34 @@ MODEL_PROMPTS: dict[str, dict[str, str | None]] = {
         "kie_extraction": None,  # use default JSON extraction prompt
         "handwritten": "Free OCR.",
     },
+    # Allgaznie pipeline models — pipeline handles prompting internally
+    "Allgaznie-GLM": {
+        "document_parse": None,
+        "document_parse_dp": None,
+        "text_recognition": None,
+        "formula_recognition": "Formula Recognition:",
+        "table_to_html": "Table Recognition:",
+        "kie_extraction": None,
+        "handwritten": "Text Recognition:",
+    },
+    "Allgaznie-Paddle": {
+        "document_parse": None,
+        "document_parse_dp": None,
+        "text_recognition": None,
+        "formula_recognition": "Formula Recognition:",
+        "table_to_html": "Table Recognition:",
+        "kie_extraction": None,
+        "handwritten": "OCR:",
+    },
+    "Allgaznie-DeepSeek": {
+        "document_parse": None,
+        "document_parse_dp": None,
+        "text_recognition": None,
+        "formula_recognition": "Free OCR.",
+        "table_to_html": "Free OCR.",
+        "kie_extraction": None,
+        "handwritten": "Free OCR.",
+    },
 }
 
 

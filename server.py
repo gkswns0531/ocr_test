@@ -79,12 +79,25 @@ class VLLMServer:
         _wait_gpu_free(timeout=15)
 
         cmd = self.build_command()
+        env = os.environ.copy()
+        if self.model_config.env:
+            env.update(self.model_config.env)
         print(f"[Server] Starting vLLM: {' '.join(cmd)}")
+        if self.model_config.env:
+            print(f"[Server] Extra env: {self.model_config.env}")
+
+        # Write server logs to file instead of PIPE to avoid pipe buffer deadlock.
+        # When stdout=PIPE and nobody reads, the 64KB pipe buffer fills up,
+        # blocking vLLM's log writes and freezing its event loop entirely.
+        self._log_path = f"/tmp/vllm_server_{self.port}.log"
+        self._log_file = open(self._log_path, "w")
+        print(f"[Server] Logging to {self._log_path}")
         self.proc = subprocess.Popen(
             cmd,
-            stdout=subprocess.PIPE,
+            stdout=self._log_file,
             stderr=subprocess.STDOUT,
             start_new_session=True,  # own process group for clean cleanup
+            env=env,
         )
         self._wait_for_ready(timeout)
 
@@ -94,12 +107,12 @@ class VLLMServer:
         start = time.time()
         while time.time() - start < timeout:
             if self.proc and self.proc.poll() is not None:
-                # Read remaining stdout for error diagnosis
-                remaining = ""
-                if self.proc.stdout:
-                    remaining = self.proc.stdout.read().decode(errors="replace")
-                if remaining:
-                    print(f"[Server] vLLM stdout:\n{remaining[-3000:]}")
+                # Read log file for error diagnosis
+                if hasattr(self, "_log_path") and os.path.exists(self._log_path):
+                    with open(self._log_path) as f:
+                        remaining = f.read()
+                    if remaining:
+                        print(f"[Server] vLLM log:\n{remaining[-3000:]}")
                 raise RuntimeError(
                     f"vLLM server exited with code {self.proc.returncode}"
                 )
@@ -143,6 +156,9 @@ class VLLMServer:
                 pass
             print("[Server] vLLM server stopped.")
         self.proc = None
+        if hasattr(self, "_log_file") and self._log_file:
+            self._log_file.close()
+            self._log_file = None
 
         # Clean up any orphaned GPU processes and wait for GPU memory release
         _kill_gpu_orphans()

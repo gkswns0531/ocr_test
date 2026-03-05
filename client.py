@@ -317,108 +317,101 @@ class PaddleOCRVLPipelineClient:
 
 
 class DeepSeekOCR2Client:
-    """Offline vLLM client for DeepSeek-OCR2 using official inference pipeline.
+    """Offline vLLM client for DeepSeek-OCR2 using native vLLM support.
 
-    Uses LLM.generate() (not OpenAI API) with:
-    - Custom model class (DeepseekOCR2ForCausalLM)
-    - Custom image processor with dynamic tiling (1024x1024 global + 768x768 local crops)
-    - NoRepeatNGramLogitsProcessor (ngram_size=40, window_size=90)
-    - skip_special_tokens=False
-    - VLLM_USE_V1=0
+    Optimizations applied (from SDS VQA pipeline):
+    - FP8 quantization (W8A8, ~50% model size, ~37% latency reduction)
+    - max_num_seqs=16, gpu_memory_utilization=0.90 (batch throughput)
+    - RepetitionDetectionParams (prevent degenerate repetition)
+    - Batch LLM.generate() for continuous batching
     """
 
     def __init__(self, model_id: str, max_tokens: int = 8192) -> None:
-        os.environ['VLLM_USE_V1'] = '0'
-
-        from deepseek_vllm.deepseek_ocr2 import DeepseekOCR2ForCausalLM
-        from deepseek_vllm.ngram_norepeat import NoRepeatNGramLogitsProcessor
-        from deepseek_vllm.image_process import DeepseekOCR2Processor
-        from transformers import AutoTokenizer
-        from vllm.model_executor.models.registry import ModelRegistry
         from vllm import LLM, SamplingParams
-
-        ModelRegistry.register_model("DeepseekOCR2ForCausalLM", DeepseekOCR2ForCausalLM)
+        from vllm.sampling_params import RepetitionDetectionParams
 
         self.llm = LLM(
             model=model_id,
-            hf_overrides={"architectures": ["DeepseekOCR2ForCausalLM"]},
-            block_size=256,
-            enforce_eager=False,
             trust_remote_code=True,
             max_model_len=8192,
-            swap_space=0,
-            max_num_seqs=1,
+            max_num_seqs=16,
             tensor_parallel_size=1,
-            gpu_memory_utilization=0.7,
+            gpu_memory_utilization=0.90,
+            quantization="fp8",
         )
-
-        logits_processors = [NoRepeatNGramLogitsProcessor(
-            ngram_size=40, window_size=90,
-            whitelist_token_ids={128821, 128822},  # <td>, </td>
-        )]
 
         self.sampling_params = SamplingParams(
             temperature=0.0,
             max_tokens=max_tokens,
-            logits_processors=logits_processors,
             skip_special_tokens=False,
+            repetition_detection=RepetitionDetectionParams(
+                max_pattern_size=40,
+                min_pattern_size=5,
+                min_count=3,
+            ),
         )
 
-        tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
-        self.processor = DeepseekOCR2Processor(tokenizer=tokenizer)
-
-    def infer(self, image: Image.Image, prompt: str, max_tokens: int = 8192) -> tuple[str, float]:
-        """Run inference using offline LLM.generate(). Returns (text, latency_ms)."""
+    @staticmethod
+    def _prepare_image(image: Image.Image) -> Image.Image:
+        """Correct EXIF orientation and convert to RGB."""
         from PIL import ExifTags
 
-        t0 = time.time()
-
-        # Correct EXIF orientation (official protocol)
         try:
             exif = image._getexif()
             if exif is not None:
-                orientation_key = None
-                for tag, value in ExifTags.TAGS.items():
-                    if value == 'Orientation':
-                        orientation_key = tag
-                        break
+                orientation_key = next(
+                    (tag for tag, name in ExifTags.TAGS.items() if name == 'Orientation'), None
+                )
                 if orientation_key:
                     orientation = exif.get(orientation_key, 1)
-                    if orientation == 3:
-                        image = image.rotate(180, expand=True)
-                    elif orientation == 6:
-                        image = image.rotate(270, expand=True)
-                    elif orientation == 8:
-                        image = image.rotate(90, expand=True)
+                    rotations = {3: 180, 6: 270, 8: 90}
+                    if orientation in rotations:
+                        image = image.rotate(rotations[orientation], expand=True)
         except Exception:
             pass
+        return image.convert('RGB')
 
-        image = image.convert('RGB')
-
-        # Build full prompt with <image> placeholder
-        full_prompt = f"<image>\n{prompt}"
-
-        # Process image with official tiling processor
-        processed = self.processor.tokenize_with_images(
-            images=[image],
-            prompt=full_prompt,
-            bos=True, eos=True, cropping=True,
-        )
-
-        inputs = {
-            "prompt": full_prompt,
-            "multi_modal_data": {"image": processed},
-        }
-
+    def infer(self, image: Image.Image, prompt: str, max_tokens: int = 8192) -> tuple[str, float]:
+        """Single-sample inference. Returns (text, latency_ms)."""
+        t0 = time.time()
+        image = self._prepare_image(image)
+        inputs = {"prompt": f"<image>\n{prompt}", "multi_modal_data": {"image": [image]}}
         try:
             outputs = self.llm.generate([inputs], self.sampling_params)
-            latency_ms = (time.time() - t0) * 1000
             text = outputs[0].outputs[0].text if outputs else ""
-            return text, latency_ms
+            return text, (time.time() - t0) * 1000
         except Exception as e:
-            latency_ms = (time.time() - t0) * 1000
-            print(f"[DeepSeek-OCR2] Inference error ({latency_ms:.0f}ms): {type(e).__name__}: {e}")
-            return "", latency_ms
+            print(f"[DeepSeek-OCR2] Error: {type(e).__name__}: {e}")
+            return "", (time.time() - t0) * 1000
+
+    def batch_infer(
+        self, images: list[Image.Image], prompts: list[str],
+    ) -> list[tuple[str, float]]:
+        """Batch inference — pass all inputs to LLM.generate() at once.
+
+        vLLM's continuous batching processes up to max_num_seqs concurrently,
+        queuing the rest automatically.
+        """
+        t0 = time.time()
+        inputs_list = []
+        for image, prompt in zip(images, prompts):
+            image = self._prepare_image(image)
+            inputs_list.append({
+                "prompt": f"<image>\n{prompt}",
+                "multi_modal_data": {"image": [image]},
+            })
+        try:
+            outputs = self.llm.generate(inputs_list, self.sampling_params)
+            total_ms = (time.time() - t0) * 1000
+            per_sample_ms = total_ms / len(inputs_list) if inputs_list else 0
+            results = []
+            for out in outputs:
+                text = out.outputs[0].text if out.outputs else ""
+                results.append((text, per_sample_ms))
+            return results
+        except Exception as e:
+            print(f"[DeepSeek-OCR2] Batch error: {type(e).__name__}: {e}")
+            return [("", 0.0)] * len(images)
 
     def close(self) -> None:
         """Release GPU resources."""
@@ -431,9 +424,44 @@ class DeepSeekOCR2Client:
             torch.cuda.empty_cache()
 
 
+class AllgaznieClient:
+    """Adapter: wraps AllgaznieOCR pipeline for infer.py compatibility."""
+
+    def __init__(self, model_config: ModelConfig, port: int = 8000) -> None:
+        from allgaznie import AllgaznieConfig, AllgaznieOCR
+
+        vlm_key = self._resolve_vlm_key(model_config.model_id)
+        config = AllgaznieConfig(
+            vlm=vlm_key,
+            vlm_model_id=model_config.model_id,
+            vlm_port=port,
+        )
+        self._pipeline = AllgaznieOCR(config=config)
+
+    @staticmethod
+    def _resolve_vlm_key(model_id: str) -> str:
+        """Map model_id to VLM config key."""
+        mapping = {
+            "zai-org/GLM-OCR": "glm-ocr",
+            "PaddlePaddle/PaddleOCR-VL": "paddleocr-vl",
+            "deepseek-ai/DeepSeek-OCR-2": "deepseek-ocr2",
+        }
+        return mapping.get(model_id, "glm-ocr")
+
+    def infer(self, image: Image.Image, prompt: str, max_tokens: int = 4096) -> tuple[str, float]:
+        """Run full pipeline on a single image. Returns (markdown, latency_ms)."""
+        result = self._pipeline.parse_image(image)
+        return result.markdown, result.latency_ms
+
+    def close(self) -> None:
+        self._pipeline.close()
+
+
 def create_client(model_config: ModelConfig, port: int = 8000):
     """Factory to create the appropriate client for a model."""
-    if model_config.backend == "deepseek_offline":
+    if model_config.backend == "allgaznie":
+        return AllgaznieClient(model_config, port=port)
+    elif model_config.backend == "deepseek_offline":
         return DeepSeekOCR2Client(
             model_id=model_config.model_id,
             max_tokens=MODEL_MAX_TOKENS.get(model_config.name, 8192),

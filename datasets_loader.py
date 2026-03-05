@@ -42,10 +42,25 @@ _OMNIDOC_IGNORE_CATEGORIES = {
 _OMNIDOC_EVAL_TEXT_CATEGORIES = _OMNIDOC_PLAIN_TEXT_CATEGORIES - _OMNIDOC_IGNORE_CATEGORIES
 
 
+def _build_omnidocbench_stem_to_hf_path() -> dict[str, str]:
+    """Build stem → HF repo path mapping for OmniDocBench images.
+
+    HF repo stores images as both .jpg and .png, so we list the repo
+    once and build a lookup by filename stem.
+    """
+    from huggingface_hub import HfApi
+
+    api = HfApi()
+    files = api.list_repo_tree(
+        "opendatalab/OmniDocBench", repo_type="dataset", path_in_repo="images"
+    )
+    return {Path(f.path).stem: f.path for f in files}
+
+
 def load_omnidocbench(max_samples: int | None = None) -> list[BenchmarkSample]:
     """Load OmniDocBench v1.5.
 
-    Images from HF dataset, GT annotations from OmniDocBench.json.
+    Images downloaded by filename from HF repo, GT annotations from OmniDocBench.json.
     Stores full annotation dict as ground_truth for element-wise evaluation
     using the official OmniDocBench protocol (md_tex_filter + match_gt2pred_quick).
     """
@@ -56,44 +71,39 @@ def load_omnidocbench(max_samples: int | None = None) -> list[BenchmarkSample]:
     with open(anno_path) as f:
         annotations = json.load(f)
 
-    # Load images
-    ds = load_dataset("opendatalab/OmniDocBench", split="train", cache_dir=str(DATA_CACHE_DIR))
-
-    # Build filename-stem → HF dataset index mapping.
-    # HF dataset has 1358 images (including 3 meta images like data_diversity.png)
-    # while annotations JSON has 1355 entries. Order differs between the two,
-    # and HF uses .png while annotations use .jpg, so we align by stem (no extension).
-    hf_stem_to_idx: dict[str, int] = {}
-    for idx in range(len(ds)):
-        img = ds[idx]["image"]
-        if hasattr(img, "filename") and img.filename:
-            stem = Path(img.filename).stem
-            hf_stem_to_idx[stem] = idx
-
     n = len(annotations)
     if max_samples is not None:
         n = min(n, max_samples)
 
+    # Build stem → HF path mapping (handles mixed .jpg/.png extensions)
+    stem_to_hf = _build_omnidocbench_stem_to_hf_path()
+
     samples = []
     for i in range(n):
         anno = annotations[i]
-        # Look up the matching HF image by annotation's image_path stem
         anno_image_path = anno.get("page_info", {}).get("image_path", "")
         anno_stem = Path(anno_image_path).stem if anno_image_path else ""
 
-        if anno_stem and hf_stem_to_idx:
-            hf_idx = hf_stem_to_idx.get(anno_stem)
-            if hf_idx is None:
-                continue  # No matching image in HF dataset (e.g. meta images)
-        else:
-            hf_idx = i  # Fallback to sequential alignment
-            if hf_idx >= len(ds):
-                break
+        if not anno_stem:
+            continue
 
-        image = _ensure_pil(ds[hf_idx].get("image"))
+        hf_path = stem_to_hf.get(anno_stem)
+        if not hf_path:
+            print(f"  [WARN] OmniDocBench: no HF image for stem: {anno_stem}")
+            continue
+
+        try:
+            local_path = hf_hub_download(
+                "opendatalab/OmniDocBench", hf_path, repo_type="dataset"
+            )
+        except Exception:
+            print(f"  [WARN] OmniDocBench: download failed: {hf_path}")
+            continue
+
+        image = _ensure_pil(Image.open(local_path))
         if image is None:
             continue
-        # Store full annotation as ground_truth for official element-wise evaluation
+
         ground_truth = {
             "annotation": anno,
             "annotation_index": i,
@@ -103,7 +113,6 @@ def load_omnidocbench(max_samples: int | None = None) -> list[BenchmarkSample]:
             ground_truth=ground_truth,
             metadata={
                 "index": i,
-                "hf_index": hf_idx,
                 "image_filename": anno_stem,
                 "page_info": anno.get("page_info", {}),
             },
