@@ -30,6 +30,11 @@ REGION_PROMPTS: dict[str, dict[str, str]] = {
         "table": "Free OCR.",
         "formula": "Free OCR.",
     },
+    "MinerU-VL": {
+        "text": "\nText Recognition:",
+        "table": "\nTable Recognition:",
+        "formula": "\nFormula Recognition:",
+    },
 }
 
 # VLM model_id → display name mapping for prompt lookup
@@ -37,7 +42,10 @@ _MODEL_ID_TO_DISPLAY: dict[str, str] = {
     "zai-org/GLM-OCR": "GLM-OCR",
     "PaddlePaddle/PaddleOCR-VL": "PaddleOCR-VL",
     "deepseek-ai/DeepSeek-OCR-2": "DeepSeek-OCR2",
+    "opendatalab/MinerU2.5-2509-1.2B": "MinerU-VL",
 }
+
+_MINERU_END_TOKEN = "<|im_end|>"
 
 
 def _image_to_base64_jpeg(
@@ -61,6 +69,21 @@ def _image_to_base64_jpeg(
     buf = io.BytesIO()
     image.save(buf, format="JPEG", quality=95)
     return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
+def _try_otsl_to_html(text: str) -> str:
+    """Try to convert MinerU OTSL table output to HTML. Returns original on failure."""
+    if not text or text.startswith("<table"):
+        return text
+    try:
+        from mineru_vl_utils.post_process import convert_otsl_to_html
+        result = convert_otsl_to_html(text)
+        # Only use conversion if it produced valid HTML
+        if result.startswith("<table"):
+            return result
+    except Exception:
+        pass
+    return text
 
 
 class VLMClient:
@@ -96,6 +119,7 @@ class VLMClient:
         else:
             self.display_name = _MODEL_ID_TO_DISPLAY.get(model_name, "GLM-OCR")
 
+        self.is_mineru = self.display_name == "MinerU-VL"
         self.prompts = REGION_PROMPTS.get(self.display_name, REGION_PROMPTS["GLM-OCR"])
 
         self.client = OpenAI(
@@ -109,28 +133,61 @@ class VLMClient:
         prompt = self.prompts.get(task, self.prompts["text"])
         b64 = _image_to_base64_jpeg(crop, min_pixels=self.min_pixels, max_pixels=self.max_pixels)
 
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-                    {"type": "text", "text": prompt},
-                ],
+        messages = []
+        if self.is_mineru:
+            messages.append({"role": "system", "content": "You are a helpful assistant."})
+        messages.append({
+            "role": "user",
+            "content": [
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                {"type": "text", "text": prompt},
+            ],
+        })
+        # MinerU-VL table task needs greedy decoding + skip_special_tokens=False for OTSL
+        if self.is_mineru and task == "table":
+            temperature = 0.0
+            top_p = 0.01
+            extra = {
+                "top_k": self.top_k,
+                "repetition_penalty": self.repetition_penalty,
+                "skip_special_tokens": False,
+                "vllm_xargs": {"no_repeat_ngram_size": 100},
             }
-        ]
+        elif self.is_mineru:
+            temperature = self.temperature
+            top_p = self.top_p
+            extra = {
+                "top_k": self.top_k,
+                "repetition_penalty": self.repetition_penalty,
+                "skip_special_tokens": False,
+            }
+        else:
+            temperature = self.temperature
+            top_p = self.top_p
+            extra = {
+                "top_k": self.top_k,
+                "repetition_penalty": self.repetition_penalty,
+            }
+
         try:
             resp = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
                 max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                top_p=self.top_p,
-                extra_body={
-                    "top_k": self.top_k,
-                    "repetition_penalty": self.repetition_penalty,
-                },
+                temperature=temperature,
+                top_p=top_p,
+                extra_body=extra,
             )
-            return resp.choices[0].message.content or ""
+            text = resp.choices[0].message.content or ""
+
+            # MinerU-VL post-processing
+            if self.is_mineru:
+                if text.endswith(_MINERU_END_TOKEN):
+                    text = text[: -len(_MINERU_END_TOKEN)]
+                if task == "table":
+                    text = _try_otsl_to_html(text)
+
+            return text
         except Exception as e:
             print(f"[VLMClient] Error for task={task}: {type(e).__name__}: {e}")
             return ""

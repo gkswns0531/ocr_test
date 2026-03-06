@@ -271,7 +271,7 @@ def run_infer_benchmark(
     from prompts import get_prompt
 
     bench_cfg = BENCHMARKS[benchmark_key]
-    needs_server = model_config.backend in ("vllm", "glmocr_pipeline", "allgaznie")
+    needs_server = model_config.backend in ("vllm", "glmocr_pipeline", "allgaznie", "mineru_optimized")
 
     # Create output directory
     model_dir_name = model_key.replace("-", "_")
@@ -301,8 +301,8 @@ def run_infer_benchmark(
         print(f"[Infer] All samples already have predictions — skipping {bench_cfg.name}")
         return
 
-    # Use batch mode for offline backends
-    if model_config.backend == "deepseek_offline" and hasattr(client, "batch_infer"):
+    # Use batch mode for offline and API backends
+    if model_config.backend in ("deepseek_offline", "upstage_api", "azure_api") and hasattr(client, "batch_infer"):
         _run_batch_infer(client, model_config, benchmark_key, bench_cfg, remaining, out_dir)
         return
 
@@ -425,7 +425,7 @@ def main() -> None:
 
     # Start server if needed (deepseek_offline loads model inline, no server)
     server = None
-    needs_server = model_config.backend in ("vllm", "glmocr_pipeline", "allgaznie")
+    needs_server = model_config.backend in ("vllm", "glmocr_pipeline", "allgaznie", "mineru_optimized")
     if needs_server:
         model_config.port = args.port
         server = VLLMServer(model_config, port=args.port)

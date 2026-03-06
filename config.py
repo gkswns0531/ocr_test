@@ -8,7 +8,7 @@ from pathlib import Path
 class ModelConfig:
     name: str
     model_id: str
-    backend: str  # "vllm", "mineru", "glmocr_pipeline", "paddleocr_pipeline", "allgaznie"
+    backend: str  # "vllm", "mineru", "glmocr_pipeline", "paddleocr_pipeline", "allgaznie", "upstage_api", "azure_api"
     vllm_args: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     port: int = 8000
@@ -109,6 +109,51 @@ MODELS: dict[str, ModelConfig] = {
             "--gpu-memory-utilization", "0.85",
             "--quantization", "fp8",
         ],
+    ),
+    "mineru-optimized": ModelConfig(
+        name="MinerU-2.5-Optimized",
+        model_id="opendatalab/MinerU2.5-2509-1.2B",
+        backend="mineru_optimized",
+        vllm_args=[
+            "--trust-remote-code",
+            "--gpu-memory-utilization", "0.85",
+            "--max-num-batched-tokens", "16384",
+            "--max-num-seqs", "256",
+            "--max-model-len", "16384",
+            "--quantization", "fp8",
+        ],
+        port=8000,
+    ),
+    "allgaznie-mineru": ModelConfig(
+        name="Allgaznie-MinerU",
+        model_id="opendatalab/MinerU2.5-2509-1.2B",
+        backend="allgaznie",
+        vllm_args=[
+            "--trust-remote-code",
+            "--gpu-memory-utilization", "0.85",
+            "--max-num-batched-tokens", "16384",
+            "--max-num-seqs", "256",
+            "--max-model-len", "16384",
+            "--quantization", "fp8",
+            "--logits-processors", "mineru_vl_utils.logits_processor.vllm_v1_no_repeat_ngram:VllmV1NoRepeatNGramLogitsProcessor",
+        ],
+    ),
+    "upstage-standard": ModelConfig(
+        name="Upstage-Standard",
+        model_id="document-parse",
+        backend="upstage_api",
+        env={"UPSTAGE_MODE": "standard"},
+    ),
+    "upstage-enhanced": ModelConfig(
+        name="Upstage-Enhanced",
+        model_id="document-parse",
+        backend="upstage_api",
+        env={"UPSTAGE_MODE": "enhanced"},
+    ),
+    "azure-layout": ModelConfig(
+        name="Azure-Layout",
+        model_id="prebuilt-layout",
+        backend="azure_api",
     ),
 }
 

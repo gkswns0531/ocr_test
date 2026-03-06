@@ -436,6 +436,308 @@ class DeepSeekOCR2Client:
             torch.cuda.empty_cache()
 
 
+class MinerUOptimizedClient:
+    """MinerU pipeline using an external vLLM server (hybrid-http-client backend)."""
+
+    def __init__(self, port: int = 8000) -> None:
+        self._server_url = f"http://localhost:{port}"
+
+        # Patch transformers 5.x compat
+        import transformers.pytorch_utils as _tpu
+        if not hasattr(_tpu, 'find_pruneable_heads_and_indices'):
+            def _find_pruneable_heads_and_indices(heads, n_heads, head_size, already_pruned_heads):
+                import torch
+                mask = torch.ones(n_heads, head_size)
+                heads = set(heads) - already_pruned_heads
+                for head in heads:
+                    head -= sum(1 if h < head else 0 for h in already_pruned_heads)
+                    mask[head] = 0
+                return heads, mask.view(-1).contiguous().eq(1).nonzero().squeeze()
+            _tpu.find_pruneable_heads_and_indices = _find_pruneable_heads_and_indices
+
+        from mineru.cli.common import do_parse, read_fn
+        from mineru.utils.enum_class import MakeMode
+        self._do_parse = do_parse
+        self._read_fn = read_fn
+        self._make_mode = MakeMode.MM_MD
+
+    def infer(self, image: Image.Image, prompt: str, max_tokens: int = 8192) -> tuple[str, float]:
+        """Save image as temp file, run MinerU parse with hybrid-http-client backend."""
+        t0 = time.time()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            img_path = Path(tmpdir) / "input.png"
+            if image.mode in ("RGBA", "LA", "P"):
+                image = image.convert("RGB")
+            image.save(str(img_path))
+            out_dir = Path(tmpdir) / "output"
+            out_dir.mkdir()
+            try:
+                pdf_bytes = self._read_fn(img_path)
+                self._do_parse(
+                    output_dir=str(out_dir),
+                    pdf_file_names=["input"],
+                    pdf_bytes_list=[pdf_bytes],
+                    p_lang_list=["ch"],
+                    backend="hybrid-http-client",
+                    parse_method="auto",
+                    server_url=self._server_url,
+                    f_draw_layout_bbox=False,
+                    f_draw_span_bbox=False,
+                    f_dump_orig_pdf=False,
+                    f_dump_middle_json=False,
+                    f_dump_model_output=False,
+                    f_dump_content_list=False,
+                    f_dump_md=True,
+                    f_make_md_mode=self._make_mode,
+                )
+                latency_ms = (time.time() - t0) * 1000
+                md_files = list(Path(out_dir).rglob("*.md"))
+                if md_files:
+                    return md_files[0].read_text(encoding="utf-8"), latency_ms
+                return "", latency_ms
+            except Exception as e:
+                latency_ms = (time.time() - t0) * 1000
+                print(f"[MinerU-Optimized] Error: {e}")
+                return "", latency_ms
+
+
+class UpstageDocParserClient:
+    """Client for Upstage Document Parse API (standard, enhanced, or auto mode).
+
+    Env: UPSTAGE_API_KEY
+    model: always "document-parse"
+    mode: "standard", "enhanced", or "auto" (default: None = API default)
+
+    Ref: https://console.upstage.ai/api/parse/document-parsing
+    Endpoint: POST https://api.upstage.ai/v1/document-digitization
+    """
+
+    API_URL = "https://api.upstage.ai/v1/document-digitization"
+
+    def __init__(self, model: str = "document-parse", mode: str | None = None) -> None:
+        api_key = os.environ.get("UPSTAGE_API_KEY")
+        if not api_key:
+            raise ValueError("UPSTAGE_API_KEY environment variable required")
+        self.api_key = api_key
+        self.model = model
+        self.mode = mode  # "standard", "enhanced", "auto", or None
+        self._http = httpx.Client(timeout=httpx.Timeout(connect=10, read=300, write=30, pool=10))
+
+    # Conservative max dimension — Upstage docs don't specify, but very large
+    # images (e.g., 145M-pixel OmniDocBench scans) may cause timeouts or OOM.
+    MAX_DIMENSION = 10000
+
+    MAX_RETRIES = 5
+
+    def infer(self, image: Image.Image, prompt: str, max_tokens: int = 8192) -> tuple[str, float]:
+        t0 = time.time()
+        if image.mode in ("RGBA", "LA", "P"):
+            image = image.convert("RGB")
+        w, h = image.size
+        if w > self.MAX_DIMENSION or h > self.MAX_DIMENSION:
+            scale = min(self.MAX_DIMENSION / w, self.MAX_DIMENSION / h)
+            image = image.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+        buf = io.BytesIO()
+        image.save(buf, format="JPEG", quality=95)
+
+        try:
+            data: dict[str, str] = {
+                "model": self.model,
+                "output_formats": '["markdown"]',
+            }
+            if self.mode:
+                data["mode"] = self.mode
+
+            for attempt in range(self.MAX_RETRIES):
+                buf.seek(0)
+                resp = self._http.post(
+                    self.API_URL,
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    files={"document": ("image.jpg", buf, "image/jpeg")},
+                    data=data,
+                )
+                if resp.status_code == 429:
+                    retry_after = int(resp.headers.get("Retry-After", 10))
+                    print(f"[Upstage] 429 rate limited, waiting {retry_after}s (attempt {attempt + 1}/{self.MAX_RETRIES})")
+                    time.sleep(retry_after)
+                    continue
+                resp.raise_for_status()
+                break
+            else:
+                print(f"[Upstage-{self.mode or 'standard'}] Max retries exceeded (429)")
+                return "", (time.time() - t0) * 1000
+
+            result = resp.json()
+            content = result.get("content", {})
+            if isinstance(content, dict):
+                text = content.get("markdown", "") or content.get("text", "")
+            else:
+                text = str(content)
+            return text, (time.time() - t0) * 1000
+        except Exception as e:
+            print(f"[Upstage-{self.mode or 'standard'}] Error: {type(e).__name__}: {e}")
+            return "", (time.time() - t0) * 1000
+
+    def batch_infer(
+        self, images: list[Image.Image], prompts: list[str],
+        max_tokens: int = 8192, max_workers: int = 2,
+    ) -> list[tuple[str, float]]:
+        """Concurrent inference via ThreadPoolExecutor."""
+        results: list[tuple[str, float] | None] = [None] * len(images)
+
+        def _do(idx: int) -> tuple[int, str, float]:
+            text, latency_ms = self.infer(images[idx], prompts[idx])
+            return idx, text, latency_ms
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {pool.submit(_do, i): i for i in range(len(images))}
+            for future in as_completed(futures):
+                idx, text, latency_ms = future.result()
+                results[idx] = (text, latency_ms)
+
+        return [(r[0], r[1]) if r else ("", 0.0) for r in results]
+
+    def close(self) -> None:
+        self._http.close()
+
+
+class AzureLayoutClient:
+    """Client for Azure AI Document Intelligence (Layout model, REST API).
+
+    Env: AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT, AZURE_DOCUMENT_INTELLIGENCE_KEY
+    Returns markdown via outputContentFormat=markdown.
+
+    Limits: image 50x50 ~ 10,000x10,000 px, file ≤ 500MB.
+    Rate: S0 = 15 req/min → retry with backoff on 429.
+    """
+
+    API_VERSION = "2024-11-30"
+    POLL_INTERVAL = 2.0
+    POLL_TIMEOUT = 120
+    MAX_PIXELS = 10000  # Azure DI max dimension
+    MAX_RETRIES = 3
+
+    def __init__(self) -> None:
+        self.endpoint = os.environ.get("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT", "").rstrip("/")
+        self.key = os.environ.get("AZURE_DOCUMENT_INTELLIGENCE_KEY", "")
+        if not self.endpoint or not self.key:
+            raise ValueError(
+                "AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT and AZURE_DOCUMENT_INTELLIGENCE_KEY "
+                "environment variables required"
+            )
+        self._http = httpx.Client(timeout=httpx.Timeout(connect=10, read=300, write=30, pool=10))
+
+    @staticmethod
+    def _resize_if_needed(image: Image.Image) -> Image.Image:
+        """Resize image if any dimension exceeds Azure's 10,000 px limit."""
+        w, h = image.size
+        if w > AzureLayoutClient.MAX_PIXELS or h > AzureLayoutClient.MAX_PIXELS:
+            scale = min(AzureLayoutClient.MAX_PIXELS / w, AzureLayoutClient.MAX_PIXELS / h)
+            image = image.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+        return image
+
+    def infer(self, image: Image.Image, prompt: str, max_tokens: int = 8192) -> tuple[str, float]:
+        t0 = time.time()
+        if image.mode in ("RGBA", "LA", "P"):
+            image = image.convert("RGB")
+        image = self._resize_if_needed(image)
+        buf = io.BytesIO()
+        image.save(buf, format="JPEG", quality=95)
+        image_bytes = buf.getvalue()
+
+        analyze_url = (
+            f"{self.endpoint}/documentintelligence/documentModels/prebuilt-layout:analyze"
+            f"?api-version={self.API_VERSION}&outputContentFormat=markdown"
+        )
+
+        # Submit with retry on 429
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                resp = self._http.post(
+                    analyze_url,
+                    headers={
+                        "Ocp-Apim-Subscription-Key": self.key,
+                        "Content-Type": "application/octet-stream",
+                    },
+                    content=image_bytes,
+                )
+                if resp.status_code == 429:
+                    retry_after = int(resp.headers.get("Retry-After", 15))
+                    print(f"[Azure-Layout] Rate limited, retrying in {retry_after}s...")
+                    time.sleep(retry_after)
+                    continue
+                resp.raise_for_status()
+                break
+            except httpx.HTTPStatusError:
+                raise
+            except Exception as e:
+                if attempt < self.MAX_RETRIES - 1:
+                    time.sleep(5)
+                    continue
+                print(f"[Azure-Layout] Submit error: {type(e).__name__}: {e}")
+                return "", (time.time() - t0) * 1000
+        else:
+            print("[Azure-Layout] Max retries exceeded on submit")
+            return "", (time.time() - t0) * 1000
+
+        try:
+            operation_url = resp.headers["Operation-Location"]
+
+            poll_start = time.time()
+            while time.time() - poll_start < self.POLL_TIMEOUT:
+                time.sleep(self.POLL_INTERVAL)
+                poll_resp = self._http.get(
+                    operation_url,
+                    headers={"Ocp-Apim-Subscription-Key": self.key},
+                )
+                if poll_resp.status_code == 429:
+                    retry_after = int(poll_resp.headers.get("Retry-After", 15))
+                    time.sleep(retry_after)
+                    continue
+                poll_resp.raise_for_status()
+                poll_data = poll_resp.json()
+                status = poll_data.get("status", "")
+                if status == "succeeded":
+                    content = poll_data.get("analyzeResult", {}).get("content", "")
+                    return content, (time.time() - t0) * 1000
+                elif status in ("failed", "cancelled"):
+                    error = poll_data.get("error", {}).get("message", "unknown error")
+                    print(f"[Azure-Layout] Analysis {status}: {error}")
+                    return "", (time.time() - t0) * 1000
+
+            print(f"[Azure-Layout] Poll timeout ({self.POLL_TIMEOUT}s)")
+            return "", (time.time() - t0) * 1000
+        except Exception as e:
+            print(f"[Azure-Layout] Error: {type(e).__name__}: {e}")
+            return "", (time.time() - t0) * 1000
+
+    def batch_infer(
+        self, images: list[Image.Image], prompts: list[str],
+        max_tokens: int = 8192, max_workers: int = 4,
+    ) -> list[tuple[str, float]]:
+        """Concurrent inference via ThreadPoolExecutor.
+
+        Conservative default (4 workers) due to Azure S0 rate limit (15 req/min).
+        429 retry handles throttling automatically.
+        """
+        results: list[tuple[str, float] | None] = [None] * len(images)
+
+        def _do(idx: int) -> tuple[int, str, float]:
+            text, latency_ms = self.infer(images[idx], prompts[idx])
+            return idx, text, latency_ms
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = {pool.submit(_do, i): i for i in range(len(images))}
+            for future in as_completed(futures):
+                idx, text, latency_ms = future.result()
+                results[idx] = (text, latency_ms)
+
+        return [(r[0], r[1]) if r else ("", 0.0) for r in results]
+
+    def close(self) -> None:
+        self._http.close()
+
+
 class AllgaznieClient:
     """Adapter: wraps AllgaznieOCR pipeline for infer.py compatibility."""
 
@@ -457,6 +759,7 @@ class AllgaznieClient:
             "zai-org/GLM-OCR": "glm-ocr",
             "PaddlePaddle/PaddleOCR-VL": "paddleocr-vl",
             "deepseek-ai/DeepSeek-OCR-2": "deepseek-ocr2",
+            "opendatalab/MinerU2.5-2509-1.2B": "mineru-vl",
         }
         return mapping.get(model_id, "glm-ocr")
 
@@ -485,8 +788,15 @@ def create_client(model_config: ModelConfig, port: int = 8000):
         )
     elif model_config.backend == "glmocr_pipeline":
         return GLMOCRPipelineClient(vllm_port=port)
+    elif model_config.backend == "mineru_optimized":
+        return MinerUOptimizedClient(port=port)
     elif model_config.backend == "paddleocr_pipeline":
         return PaddleOCRVLPipelineClient()
+    elif model_config.backend == "upstage_api":
+        mode = model_config.env.get("UPSTAGE_MODE")
+        return UpstageDocParserClient(model=model_config.model_id, mode=mode)
+    elif model_config.backend == "azure_api":
+        return AzureLayoutClient()
     else:
         return MinerUClient()
 

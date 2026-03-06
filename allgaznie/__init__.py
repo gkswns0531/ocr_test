@@ -27,12 +27,14 @@ VLM_MODEL_IDS: dict[str, str] = {
     "glm-ocr": "zai-org/GLM-OCR",
     "paddleocr-vl": "PaddlePaddle/PaddleOCR-VL",
     "deepseek-ocr2": "deepseek-ai/DeepSeek-OCR-2",
+    "mineru-vl": "opendatalab/MinerU2.5-2509-1.2B",
 }
 
 VLM_DISPLAY_NAMES: dict[str, str] = {
     "glm-ocr": "GLM-OCR",
     "paddleocr-vl": "PaddleOCR-VL",
     "deepseek-ocr2": "DeepSeek-OCR2",
+    "mineru-vl": "MinerU-VL",
 }
 
 
