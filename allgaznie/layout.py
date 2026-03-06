@@ -35,6 +35,7 @@ LABEL_TO_TASK: dict[str, str] = {
     "table": "table",
     "display_formula": "formula",
     "inline_formula": "formula",
+    "formula": "formula",  # HF model merges display/inline into "formula"
     "chart": "skip",
     "image": "skip",
     "aside_text": "abandon",
