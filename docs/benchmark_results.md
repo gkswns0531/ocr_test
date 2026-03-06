@@ -33,18 +33,20 @@ All metrics below. **↑ = higher is better, ↓ = lower is better.** Bold = bes
 
 ### 2.1 OmniDocBench Official Eval (1,355 samples)
 
-| Model | Text ED ↓ | Formula CDM ↑ | Table TEDS ↑ | Table TEDS-S ↑ | ReadOrder ED ↓ |
-|:---|:---:|:---:|:---:|:---:|:---:|
-| **GLM-OCR Pipeline** | **0.042** | 0.922 | 0.919 | 0.946 | 0.056 |
-| **MinerU-2.5** | 0.054 | 0.910 | 0.864 | 0.909 | **0.052** |
-| **Allgaznie-GLM** | 0.054 | **0.930** | **0.925** | **0.952** | 0.070 |
-| **Allgaznie-Paddle** | 0.051 | 0.900 | 0.890 | 0.929 | 0.068 |
-| **Allgaznie-MinerU** | 0.056 | 0.901 | 0.890 | 0.931 | 0.072 |
-| **Allgaznie-DeepSeek** | 0.084 | 0.834 | 0.615 | 0.674 | 0.083 |
-| **DeepSeek-OCR2** | 0.073 | 0.912 | 0.682 | 0.720 | 0.073 |
-| Upstage Standard | 0.122 | 0.546 | 0.700 | 0.775 | 0.143 |
-| Upstage Enhanced | 0.126 | 0.542 | 0.690 | 0.756 | 0.150 |
-| GLM-OCR (VLM-only) | 0.128 | 0.815 | 0.404 | 0.424 | 0.143 |
+Overall = ((1 - Text_ED) × 100 + Table_TEDS + Formula_CDM) / 3
+
+| Model | Overall ↑ | Text ED ↓ | Formula CDM ↑ | Table TEDS ↑ | Table TEDS-S ↑ | ReadOrder ED ↓ |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Allgaznie-GLM** | **93.3** | 0.054 | **93.0** | **92.5** | **95.2** | 0.070 |
+| **GLM-OCR Pipeline** | 93.3 | **0.042** | 92.2 | 91.9 | 94.6 | 0.056 |
+| **Allgaznie-Paddle** | 91.3 | 0.051 | 90.0 | 89.0 | 92.9 | 0.068 |
+| **Allgaznie-MinerU** | 91.2 | 0.056 | 90.1 | 89.0 | 93.1 | 0.072 |
+| **MinerU-2.5** | 90.6 | 0.054 | 91.0 | 86.4 | 90.9 | **0.052** |
+| **DeepSeek-OCR2** | 84.0 | 0.073 | 91.2 | 68.2 | 72.0 | 0.073 |
+| **Allgaznie-DeepSeek** | 78.9 | 0.084 | 83.4 | 61.5 | 67.4 | 0.083 |
+| Upstage Standard | 70.8 | 0.122 | 54.6 | 70.0 | 77.5 | 0.143 |
+| GLM-OCR (VLM-only) | 69.7 | 0.128 | 81.5 | 40.4 | 42.4 | 0.143 |
+| Upstage Enhanced | 70.4 | 0.126 | 54.2 | 69.0 | 75.6 | 0.150 |
 
 ### 2.2 OmniDocBench Custom Eval (with scoring fixes, per-type averages)
 
@@ -160,18 +162,18 @@ All metrics below. **↑ = higher is better, ↓ = lower is better.** Bold = bes
 
 ### 3.1 Consolidated View (Model = Row, Benchmark = Column)
 
-| Model | OmniDoc Text ED ↓ | OmniDoc CDM ↑ | OmniDoc TEDS ↑ | DP-Bench NID ↑ | OCRBench ↑ | UniMER CDM ↑ | PubTab TEDS ↑ | TEDS Test ↑ | NanoNets ↑ | Handwr CER ↓ |
-|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **GLM-OCR Pipeline** | **0.042** | 0.922 | 0.919 | 0.929 | 0.477 | 0.843 | 0.691 | 0.683 | 0.782 | 0.121 |
-| **MinerU-2.5** | 0.054 | 0.910 | 0.864 | 0.924 | 0.331 | 0.793 | 0.593 | 0.595 | **0.803** | 1.950 |
-| **Allgaznie-GLM** | 0.054 | **0.930** | **0.925** | 0.911 | 0.463 | 0.578 | 0.642 | 0.678 | 0.785 | 0.689 |
-| **Allgaznie-Paddle** | 0.051 | 0.900 | 0.890 | 0.871 | 0.465 | 0.625 | 0.652 | 0.702 | **0.812** | 0.687 |
-| **Allgaznie-MinerU** | 0.056 | 0.901 | 0.890 | 0.909 | 0.402 | 0.601 | 0.657 | **0.721** | 0.784 | 0.738 |
-| **Allgaznie-DeepSeek** | 0.084 | 0.834 | 0.615 | 0.900 | 0.349 | 0.512 | 0.645 | 0.668 | 0.780 | 0.767 |
-| **DeepSeek-OCR2** | 0.073 | 0.912 | 0.682 | 0.917 | 0.486 | 0.795 | 0.684 | 0.673 | 0.189 | 0.195 |
-| GLM-OCR (VLM-only) | 0.128 | 0.815 | 0.404 | — | **0.837** | **0.940** | **0.707** | 0.706 | — | **0.034** |
-| Upstage Standard | 0.122 | 0.546 | 0.700 | **0.971** | — | — | — | — | — | — |
-| Upstage Enhanced | 0.126 | 0.542 | 0.690 | 0.935 | — | — | — | — | — | — |
+| Model | OmniDoc Overall ↑ | DP-Bench NID ↑ | OCRBench ↑ | UniMER CDM ↑ | PubTab TEDS ↑ | TEDS Test ↑ | NanoNets ↑ | Handwr CER ↓ |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Allgaznie-GLM** | **93.3** | 0.911 | 0.463 | 0.578 | 0.642 | 0.678 | 0.785 | 0.689 |
+| **GLM-OCR Pipeline** | 93.3 | 0.929 | 0.477 | 0.843 | 0.691 | 0.683 | 0.782 | 0.121 |
+| **Allgaznie-Paddle** | 91.3 | 0.871 | 0.465 | 0.625 | 0.652 | 0.702 | **0.812** | 0.687 |
+| **Allgaznie-MinerU** | 91.2 | 0.909 | 0.402 | 0.601 | 0.657 | **0.721** | 0.784 | 0.738 |
+| **MinerU-2.5** | 90.6 | 0.924 | 0.331 | 0.793 | 0.593 | 0.595 | **0.803** | 1.950 |
+| **DeepSeek-OCR2** | 84.0 | 0.917 | 0.486 | 0.795 | 0.684 | 0.673 | 0.189 | 0.195 |
+| **Allgaznie-DeepSeek** | 78.9 | 0.900 | 0.349 | 0.512 | 0.645 | 0.668 | 0.780 | 0.767 |
+| Upstage Standard | 70.8 | **0.971** | — | — | — | — | — | — |
+| GLM-OCR (VLM-only) | 69.7 | — | **0.837** | **0.940** | **0.707** | 0.706 | — | **0.034** |
+| Upstage Enhanced | 70.4 | 0.935 | — | — | — | — | — | — |
 
 ---
 
@@ -234,7 +236,37 @@ Upstage API advantages:
 
 ---
 
-## 5. Scoring Fix Iterations (2026-03-06)
+## 5. Reproducibility vs Official Leaderboard
+
+OmniDocBench v1.5 공식 리더보드 대비 재현도.
+
+| Model | 공식 Overall | 우리 Overall | Delta | 재현율 | 비고 |
+|:---|:---:|:---:|:---:|:---:|:---|
+| MinerU-2.5 | 90.67 | 90.6 | -0.04 | 99.96% | 거의 완벽 재현 |
+| GLM-OCR | 94.62* | 93.3 | -1.34 | 98.6% | Pipeline SDK로 재현. *HF 자체 발표값 |
+| PaddleOCR-VL | 92.86 | — | — | — | VLM-only OmniDocBench 추론 미수행 |
+| DeepSeek-OCR v1 | 87.01 | — | — | — | 리더보드 모델 (v1), 우리는 v2 사용 |
+
+리더보드에 우리 모델을 삽입하면:
+
+| Rank | Model | Overall | Source |
+|:---:|:---|:---:|:---|
+| 1 | GLM-OCR (HF 발표) | 94.62 | 공식 |
+| **2** | **Allgaznie-GLM** | **93.3** | **우리** |
+| **3** | **GLM-OCR Pipeline (SDK)** | **93.3** | **우리** |
+| 4 | PaddleOCR-VL | 92.86 | 공식 |
+| **5** | **Allgaznie-Paddle** | **91.3** | **우리** |
+| **6** | **Allgaznie-MinerU** | **91.2** | **우리** |
+| 7 | MinerU2.5 | 90.67 | 공식 |
+| **8** | **MinerU-2.5 (재현)** | **90.6** | **우리** |
+| 9 | Qwen3-VL-235B | 89.15 | 공식 |
+| 10 | MonkeyOCR-pro-3B | 88.85 | 공식 |
+| 11 | Gemini-2.5 Pro | 88.03 | 공식 |
+| 12 | Deepseek-OCR v1 | 87.01 | 공식 |
+
+---
+
+## 6. Scoring Fix Iterations (2026-03-06)
 
 Three rounds of evaluate→analyze→fix→re-evaluate to eliminate false negatives (correct predictions marked as wrong).
 
@@ -272,7 +304,7 @@ Three rounds of evaluate→analyze→fix→re-evaluate to eliminate false negati
 
 ---
 
-## 6. Qualitative Error Analysis
+## 7. Qualitative Error Analysis
 
 ### 6.1 DP-Bench Error Analysis
 
@@ -308,7 +340,7 @@ GLM has **4x fewer** low-scoring samples than Upstage (64 vs 243) and only **0.1
 
 ---
 
-## 7. Infrastructure Notes
+## 8. Infrastructure Notes
 
 ### subprocess.PIPE Deadlock Fix
 vLLM server using `stdout=subprocess.PIPE` caused 64KB pipe buffer fill → server deadlock. Fixed by redirecting to log file.
