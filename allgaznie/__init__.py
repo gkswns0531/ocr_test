@@ -47,12 +47,12 @@ class AllgaznieConfig:
     vlm_port: int = 8000
     vlm_max_tokens: int = 8192
     vlm_max_workers: int = 16
-    vlm_temperature: float = 0.1
-    vlm_top_p: float = 0.1
+    vlm_temperature: float = 0.0
+    vlm_top_p: float = 1.0
     vlm_top_k: int = 1
-    vlm_repetition_penalty: float = 1.1
-    vlm_min_pixels: int = 12544
-    vlm_max_pixels: int = 1003520
+    vlm_repetition_penalty: float = 1.0
+    vlm_min_pixels: int = 0  # 0 = use model-specific default
+    vlm_max_pixels: int = 0  # 0 = use model-specific default
     layout_model_id: str = "PaddlePaddle/PP-DocLayoutV3_safetensors"
     layout_threshold: float = 0.3
     layout_device: str = "cuda"

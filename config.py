@@ -108,6 +108,7 @@ MODELS: dict[str, ModelConfig] = {
             "--max-num-seqs", "16",
             "--gpu-memory-utilization", "0.85",
             "--quantization", "fp8",
+            "--logits-processors", "mineru_vl_utils.logits_processor.vllm_v1_no_repeat_ngram:VllmV1NoRepeatNGramLogitsProcessor",
         ],
     ),
     "mineru-optimized": ModelConfig(
