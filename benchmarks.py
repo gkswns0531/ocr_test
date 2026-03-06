@@ -363,6 +363,12 @@ def _extract_omnidoc_gt_elements(anno: dict) -> dict[str, list]:
         }
         saved_element_dict[sorted_block[0]["category_type"]].append(merged_block)
 
+    # Formula elements: GT stores text in 'latex' key, not 'text'.
+    # Copy to 'text' so downstream matching code can access it uniformly.
+    for elem in saved_element_dict.get('equation_isolated', []):
+        if not elem.get('text') and elem.get('latex'):
+            elem['text'] = elem['latex']
+
     return dict(saved_element_dict)
 
 
@@ -450,6 +456,22 @@ def _eval_document_parse(pred: str, gt, metadata: dict) -> dict:
                 teds_val = compute_teds(pred_table, gt_table) * 100  # 0-100 scale
                 table_teds_scores.append(teds_val)
 
+    # 5b. Table → text extraction: when pred has HTML tables but GT has no tables,
+    # extract cell text for potential use in concat text fallback (Fix #9).
+    # Don't add to pred_mix directly (would hurt when table has chart data).
+    _pred_table_cell_texts: list[str] = []
+    if not gt_elements.get('table'):
+        import re as _re_tbl
+        for table_key in ('html_table', 'latex_table'):
+            for tbl_elem in pred_dataset.get(table_key, []):
+                html = tbl_elem.get('content', '') or tbl_elem.get('text', '')
+                if not html:
+                    continue
+                cell_text = _re_tbl.sub(r'<[^>]+>', ' ', html)
+                cell_text = _re_tbl.sub(r'\s+', ' ', cell_text).strip()
+                if cell_text:
+                    _pred_table_cell_texts.append(cell_text)
+
     # 6. Match text+formula elements using quick_match (with timeout fallback)
     # Track (edit_num, upper_len) tuples for official ALL_page_avg aggregation
     text_edit_pairs: list[tuple[float, int]] = []  # (edit_num, upper_len)
@@ -474,11 +496,24 @@ def _eval_document_parse(pred: str, gt, metadata: dict) -> dict:
             edit = m.get('edit', 1.0)
             gt_text = m.get('gt', '')
             pred_text = m.get('pred', '')
-            upper_len = max(len(gt_text), len(pred_text), 1)
 
+            # Fix #8: Normalize LaTeX formulas before edit distance
             if gt_cat == 'equation_isolated':
-                formula_edit_pairs.append((edit * upper_len, upper_len))
+                upper_len_orig = max(len(gt_text), len(pred_text), 1)
+                orig_score = edit  # original normalized edit distance
+
+                gt_text_norm = _normalize_latex(gt_text)
+                pred_text_norm = _normalize_latex(pred_text)
+                upper_len_norm = max(len(gt_text_norm), len(pred_text_norm), 1)
+                norm_score = normalized_edit_distance(pred_text_norm, gt_text_norm)
+
+                # Pick the better pair (lower edit = better)
+                if norm_score <= orig_score:
+                    formula_edit_pairs.append((norm_score * upper_len_norm, upper_len_norm))
+                else:
+                    formula_edit_pairs.append((orig_score * upper_len_orig, upper_len_orig))
             elif gt_cat:
+                upper_len = max(len(gt_text), len(pred_text), 1)
                 text_edit_pairs.append((edit * upper_len, upper_len))
 
     # 7. Compute per-type averages using official ALL_page_avg:
@@ -490,6 +525,37 @@ def _eval_document_parse(pred: str, gt, metadata: dict) -> dict:
     else:
         avg_text_ed = 1.0
     text_score = (1.0 - avg_text_ed) * 100
+
+    # Fix #9: Concat text fallback — when element-wise matching fails due to
+    # segmentation mismatch (GT=1 big block, pred=many small blocks), compare
+    # concatenated text and take the better score.
+    if gt_mix and (pred_mix or _pred_table_cell_texts) and text_score < 80:
+        gt_text_cats = {'text_block', 'title', 'code_txt', 'code_txt_caption', 'reference',
+                        'equation_caption', 'figure_caption', 'figure_footnote',
+                        'table_caption', 'table_footnote', 'code_algorithm',
+                        'code_algorithm_caption', 'header', 'footer', 'page_footnote',
+                        'page_number'}
+        gt_concat = ' '.join(
+            e.get('text', '') for e in gt_mix
+            if e.get('category_type') in gt_text_cats and e.get('text'))
+        pred_concat = ' '.join(
+            e.get('text', '') or e.get('content', '') for e in pred_mix
+            if e.get('text') or e.get('content'))
+        # Also try including table cell text (for cases where model outputs
+        # text content as HTML table but GT expects text elements)
+        pred_concat_with_tables = pred_concat
+        if _pred_table_cell_texts:
+            extra = ' '.join(_pred_table_cell_texts)
+            pred_concat_with_tables = (pred_concat + ' ' + extra).strip() if pred_concat else extra
+        best_concat_score = text_score
+        for candidate in (pred_concat, pred_concat_with_tables):
+            if gt_concat and candidate:
+                ed = normalized_edit_distance(candidate, gt_concat)
+                score = (1.0 - ed) * 100
+                if score > best_concat_score:
+                    best_concat_score = score
+                    avg_text_ed = ed
+        text_score = best_concat_score
 
     avg_table_teds = (sum(table_teds_scores) / len(table_teds_scores)
                       if table_teds_scores else 0.0)
@@ -539,6 +605,62 @@ def _eval_document_parse_legacy(pred: str, gt, metadata: dict) -> dict:
     }
 
 
+def _normalize_latex(s: str) -> str:
+    """Normalize LaTeX formula text for fairer edit distance comparison.
+
+    Handles common format differences between GT and predictions:
+    - $...$ / $$...$$ delimiters
+    - \\operatorname{sin} vs \\sin vs sin
+    - Sizing commands (\\left, \\right, \\big, etc.)
+    - Thin-space commands (\\, \\; etc.)
+    """
+    import re as _re
+    s = _re.sub(r'\$+', '', s)  # Remove $ delimiters
+    s = _re.sub(r'\\(?:operatorname|mathrm|text|textrm|textit)\{([^}]+)\}', r'\1', s)
+    s = _re.sub(r'\\(sin|cos|tan|cot|sec|csc|arcsin|arccos|arctan|sinh|cosh|tanh'
+                r'|log|ln|exp|lim|max|min|sup|inf|det|gcd|deg|dim|ker|hom|arg)\b', r'\1', s)
+    s = _re.sub(r'\\(?:left|right|big|Big|bigg|Bigg)\s*([|()\[\]{}.|/\\])', r'\1', s)
+    s = _re.sub(r'\\(?:left|right|big|Big|bigg|Bigg)\s*\\.', '', s)
+    s = _re.sub(r'\\[,;:!]', ' ', s)  # Thin spaces → space
+    s = _re.sub(r'\\quad|\\qquad', ' ', s)
+    s = _re.sub(r'\\(?:displaystyle|textstyle|scriptstyle)\s*', '', s)
+    s = _re.sub(r'\s+', ' ', s).strip()
+    return s
+
+
+def _normalize_dot_leaders(text: str) -> str:
+    """Normalize TOC dot-leaders in both GT and prediction.
+
+    GT often has literal dots like "Chapter 1..........3" while predictions
+    output "Chapter 1 3". Normalize both to avoid inflated edit distance.
+    """
+    import re as _re
+    # ". . . . ." pattern (spaced dots, 3+ repetitions)
+    text = _re.sub(r'(\.\s){3,}', ' ', text)
+    # "....." pattern (consecutive dots, 4+ to avoid ellipsis "...")
+    text = _re.sub(r'\.{4,}', ' ', text)
+    return text
+
+
+def _strip_enhanced_chart_descriptions(text: str) -> str:
+    """Strip inline chart/plot descriptions added by Upstage Enhanced mode.
+
+    Enhanced outputs chart descriptions outside <figcaption> tags in this pattern:
+        - bar chart -
+        - The chart displays the distribution of responses regarding...
+    """
+    import re as _re
+    # Match: "- <chart_type> chart -" followed by "- description..." lines
+    chart_types = r'(?:bar|line|pie|scatter|area|column|histogram|stacked|grouped|horizontal|vertical|donut|doughnut|bubble|radar|waterfall|funnel|heat\s*map|box|violin|tree\s*map)'
+    # Match the chart type header line
+    header = rf'^-\s*{chart_types}(?:\s+chart)?\s*-\s*$'
+    # Match subsequent description lines starting with "- "
+    desc_line = r'^-\s+\S.+$'
+    pattern = rf'({header}\n(?:{desc_line}\n?)*)'
+    text = _re.sub(pattern, '', text, flags=_re.MULTILINE | _re.IGNORECASE)
+    return text
+
+
 def _strip_markdown_for_nid(text: str) -> str:
     """Strip markdown artifacts from prediction text for NID comparison.
 
@@ -547,15 +669,15 @@ def _strip_markdown_for_nid(text: str) -> str:
     import re as _re
     # Remove markdown image references: ![...](...)
     text = _re.sub(r'!\[[^\]]*\]\([^)]*\)', '', text)
+    # Remove <figcaption> blocks (Enhanced mode adds image/chart descriptions not in GT)
+    text = _re.sub(r'<figcaption>.*?</figcaption>', '', text, flags=_re.DOTALL)
+    # Remove inline chart descriptions (Enhanced mode, outside figcaption)
+    text = _strip_enhanced_chart_descriptions(text)
+    # Strip PaddleOCR-VL cell tags (<fcel>, <lcel>, <ecel>, <ucel>, <nl>)
+    text = _re.sub(r'</?(?:fcel|lcel|ecel|ucel|nl)>', ' ', text)
     # Remove HTML tables (evaluated separately via TEDS)
-    # But if removing tables would leave text empty, extract table text content instead
-    text_without_tables = _re.sub(r'<table[^>]*>.*?</table>', '', text, flags=_re.DOTALL | _re.IGNORECASE)
-    if _re.sub(r'\s+', '', text_without_tables):
-        # Non-empty after stripping tables — use the stripped version
-        text = text_without_tables
-    else:
-        # Entire prediction was table(s) — extract cell text for NID comparison
-        text = _re.sub(r'<[^>]+>', ' ', text)  # strip all HTML tags, replace with space
+    # If removing tables leaves nothing, use empty string (tables scored via TEDS, not NID)
+    text = _re.sub(r'<table[^>]*>.*?</table>', '', text, flags=_re.DOTALL | _re.IGNORECASE)
     # Remove markdown heading markers: # ## ### etc.
     text = _re.sub(r'^#{1,6}\s+', '', text, flags=_re.MULTILINE)
     # Remove markdown table blocks (lines with pipes that form tables)
@@ -575,8 +697,8 @@ def _strip_markdown_for_nid(text: str) -> str:
         # Skip separator lines: |---|---|
         if _re.match(r'^[\s|:-]+$', stripped) and '|' in stripped:
             continue
-        # Skip table data lines (start with | and end with |)
-        if stripped.startswith('|') and stripped.endswith('|') and '|' in stripped[1:-1]:
+        # Skip table data lines (start with | and end with |, including single-column)
+        if stripped.startswith('|') and stripped.endswith('|') and len(stripped) > 2:
             continue
         # Skip non-leading-pipe table lines only if pipes are NOT LaTeX
         if stripped.count('|') >= 2 and not stripped.startswith('|'):
@@ -632,10 +754,13 @@ def _eval_dp_bench(pred: str, gt, metadata: dict) -> dict:
 
     # Official eval: concatenate with space, remove newlines
     import re as _re_dp
-    gt_full_text = ' '.join(gt_texts).replace('\n', '')
+    gt_full_text = ' '.join(gt_texts).replace('\n', ' ')
     gt_full_text = _re_dp.sub(r' +', ' ', gt_full_text).strip()
     # Strip markdown artifacts from prediction
     pred_text = _strip_markdown_for_nid(pred)
+    # Normalize dot-leaders on both sides (TOC pages)
+    gt_full_text = _normalize_dot_leaders(gt_full_text)
+    pred_text = _normalize_dot_leaders(pred_text)
     scores = {"nid": compute_nid(pred_text, gt_full_text)}
 
     # TEDS for tables if present — extract tables from prediction first

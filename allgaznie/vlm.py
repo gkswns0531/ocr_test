@@ -179,11 +179,15 @@ class VLMClient:
             # Official: no_repeat_ngram_size=35 (eval mode), modeling_deepseekocr2.py:936
             extra["vllm_xargs"] = {"no_repeat_ngram_size": 35}
 
+        # DeepSeek-OCR2: max_position_embeddings=8192 (total context = input+output).
+        # max_tokens must leave room for input tokens (image ~580 + prompt ~20).
+        max_tokens = 4096 if self.display_name == "DeepSeek-OCR2" else self.max_tokens
+
         try:
             resp = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
-                max_tokens=self.max_tokens,
+                max_tokens=max_tokens,
                 temperature=temperature,
                 top_p=top_p,
                 presence_penalty=presence_penalty,
