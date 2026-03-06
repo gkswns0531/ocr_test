@@ -527,7 +527,8 @@ class UpstageDocParserClient:
     # images (e.g., 145M-pixel OmniDocBench scans) may cause timeouts or OOM.
     MAX_DIMENSION = 10000
 
-    MAX_RETRIES = 5
+    MAX_RETRIES = 10
+    _next_request_time: float = 0.0  # class-level throttle timestamp
 
     def infer(self, image: Image.Image, prompt: str, max_tokens: int = 8192) -> tuple[str, float]:
         t0 = time.time()
@@ -549,6 +550,12 @@ class UpstageDocParserClient:
                 data["mode"] = self.mode
 
             for attempt in range(self.MAX_RETRIES):
+                # Wait until rate limit window allows next request
+                now = time.time()
+                if UpstageDocParserClient._next_request_time > now:
+                    wait = UpstageDocParserClient._next_request_time - now
+                    time.sleep(wait)
+
                 buf.seek(0)
                 resp = self._http.post(
                     self.API_URL,
@@ -556,8 +563,12 @@ class UpstageDocParserClient:
                     files={"document": ("image.jpg", buf, "image/jpeg")},
                     data=data,
                 )
+
+                # Update throttle from response headers
+                self._update_throttle(resp)
+
                 if resp.status_code == 429:
-                    retry_after = int(resp.headers.get("Retry-After", 10))
+                    retry_after = float(resp.headers.get("Retry-After", 2))
                     print(f"[Upstage] 429 rate limited, waiting {retry_after}s (attempt {attempt + 1}/{self.MAX_RETRIES})")
                     time.sleep(retry_after)
                     continue
@@ -578,24 +589,31 @@ class UpstageDocParserClient:
             print(f"[Upstage-{self.mode or 'standard'}] Error: {type(e).__name__}: {e}")
             return "", (time.time() - t0) * 1000
 
+    @staticmethod
+    def _update_throttle(resp: httpx.Response) -> None:
+        """Read rate limit headers and set next allowed request time.
+
+        Upstage rate limit: 1 req/s. Headers report the reset timestamp
+        as the *last* reset time (not next), so we add the interval (1s)
+        plus a small buffer to avoid hitting the boundary.
+        """
+        remaining = resp.headers.get("x-upstage-ratelimit-remaining-requests")
+        reset_ts = resp.headers.get("x-upstage-ratelimit-reset-requests")
+        if remaining is not None and reset_ts is not None:
+            if int(remaining) == 0:
+                # reset_ts is last reset time; next window opens 1s later + 0.1s buffer
+                UpstageDocParserClient._next_request_time = float(reset_ts) + 1.1
+
     def batch_infer(
         self, images: list[Image.Image], prompts: list[str],
-        max_tokens: int = 8192, max_workers: int = 2,
+        max_tokens: int = 8192, max_workers: int = 1,
     ) -> list[tuple[str, float]]:
-        """Concurrent inference via ThreadPoolExecutor."""
-        results: list[tuple[str, float] | None] = [None] * len(images)
-
-        def _do(idx: int) -> tuple[int, str, float]:
-            text, latency_ms = self.infer(images[idx], prompts[idx])
-            return idx, text, latency_ms
-
-        with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            futures = {pool.submit(_do, i): i for i in range(len(images))}
-            for future in as_completed(futures):
-                idx, text, latency_ms = future.result()
-                results[idx] = (text, latency_ms)
-
-        return [(r[0], r[1]) if r else ("", 0.0) for r in results]
+        """Sequential inference, rate-limited by API response headers."""
+        results: list[tuple[str, float]] = []
+        for i in range(len(images)):
+            text, latency_ms = self.infer(images[i], prompts[i])
+            results.append((text, latency_ms))
+        return results
 
     def close(self) -> None:
         self._http.close()
