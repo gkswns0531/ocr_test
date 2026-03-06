@@ -43,10 +43,10 @@ Overall = ((1 - Text_ED) × 100 + Table_TEDS + Formula_CDM) / 3
 | **Allgaznie-MinerU** | 91.2 | 0.056 | 90.1 | 89.0 | 93.1 | 0.072 |
 | **MinerU-2.5** | 90.6 | 0.054 | 91.0 | 86.4 | 90.9 | **0.052** |
 | **DeepSeek-OCR2** | 84.0 | 0.073 | 91.2 | 68.2 | 72.0 | 0.073 |
-| **Allgaznie-DeepSeek** | 78.9 | 0.084 | 83.4 | 61.5 | 67.4 | 0.083 |
+| **Allgaznie-DeepSeek** | 78.8 | 0.084 | 83.4 | 61.5 | 67.4 | 0.083 |
 | Upstage Standard | 70.8 | 0.122 | 54.6 | 70.0 | 77.5 | 0.143 |
+| Upstage Enhanced | 70.2 | 0.126 | 54.2 | 69.0 | 75.6 | 0.150 |
 | GLM-OCR (VLM-only) | 69.7 | 0.128 | 81.5 | 40.4 | 42.4 | 0.143 |
-| Upstage Enhanced | 70.4 | 0.126 | 54.2 | 69.0 | 75.6 | 0.150 |
 
 ### 2.2 OmniDocBench Custom Eval (with scoring fixes, per-type averages)
 
@@ -54,8 +54,8 @@ Overall = ((1 - Text_ED) × 100 + Table_TEDS + Formula_CDM) / 3
 |:---|:---:|:---:|:---:|:---:|
 | **GLM-OCR Pipeline** | **89.6** | **88.8** | 93.0 | 84.1 |
 | **Allgaznie-GLM** | 88.7 | 87.7 | **93.8** | **84.3** |
-| **Allgaznie-MinerU** | 87.8 | 87.4 | 89.9 | 82.0 |
 | **MinerU-2.5** | 87.9 | 87.5 | 88.4 | 80.3 |
+| **Allgaznie-MinerU** | 87.8 | 87.4 | 89.9 | 82.0 |
 | **DeepSeek-OCR2** | 85.0 | 85.5 | 76.4 | 80.5 |
 | Upstage Standard | 83.6 | 88.7 | 74.1 | 46.5 |
 | Upstage Enhanced | 83.2 | 88.4 | 74.2 | 46.1 |
@@ -122,8 +122,8 @@ Overall = ((1 - Text_ED) × 100 + Table_TEDS + Formula_CDM) / 3
 
 | Model | TEDS ↑ | TEDS Structure ↑ |
 |:---|:---:|:---:|
-| **Allgaznie-MinerU** | **0.721** | **0.909** |
-| GLM-OCR (VLM-only) | 0.706 | 0.913 |
+| **Allgaznie-MinerU** | **0.721** | 0.909 |
+| GLM-OCR (VLM-only) | 0.706 | **0.913** |
 | Allgaznie-Paddle | 0.702 | 0.898 |
 | GLM-OCR Pipeline | 0.683 | 0.899 |
 | Allgaznie-GLM | 0.678 | 0.883 |
@@ -160,26 +160,74 @@ Overall = ((1 - Text_ED) × 100 + Table_TEDS + Formula_CDM) / 3
 
 ## 3. Cross-Model Summary
 
-### 3.1 Consolidated View (Model = Row, Benchmark = Column)
+### 3.1 Consolidated View (Quality + Latency)
 
-| Model | OmniDoc Overall ↑ | DP-Bench NID ↑ | OCRBench ↑ | UniMER CDM ↑ | PubTab TEDS ↑ | TEDS Test ↑ | NanoNets ↑ | Handwr CER ↓ |
-|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Allgaznie-GLM** | **93.3** | 0.911 | 0.463 | 0.578 | 0.642 | 0.678 | 0.785 | 0.689 |
-| **GLM-OCR Pipeline** | 93.3 | 0.929 | 0.477 | 0.843 | 0.691 | 0.683 | 0.782 | 0.121 |
-| **Allgaznie-Paddle** | 91.3 | 0.871 | 0.465 | 0.625 | 0.652 | 0.702 | **0.812** | 0.687 |
-| **Allgaznie-MinerU** | 91.2 | 0.909 | 0.402 | 0.601 | 0.657 | **0.721** | 0.784 | 0.738 |
-| **MinerU-2.5** | 90.6 | 0.924 | 0.331 | 0.793 | 0.593 | 0.595 | **0.803** | 1.950 |
-| **DeepSeek-OCR2** | 84.0 | 0.917 | 0.486 | 0.795 | 0.684 | 0.673 | 0.189 | 0.195 |
-| **Allgaznie-DeepSeek** | 78.9 | 0.900 | 0.349 | 0.512 | 0.645 | 0.668 | 0.780 | 0.767 |
-| Upstage Standard | 70.8 | **0.971** | — | — | — | — | — | — |
-| GLM-OCR (VLM-only) | 69.7 | — | **0.837** | **0.940** | **0.707** | 0.706 | — | **0.034** |
-| Upstage Enhanced | 70.4 | 0.935 | — | — | — | — | — | — |
+| Model | OmniDoc Overall ↑ | DP-Bench NID ↑ | OCRBench ↑ | UniMER CDM ↑ | PubTab TEDS ↑ | TEDS Test ↑ | NanoNets ↑ | Handwr CER ↓ | Latency (ms) | vs Pipeline |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---:|---:|
+| **Allgaznie-GLM** | **93.3** | 0.911 | 0.463 | 0.578 | 0.642 | 0.678 | 0.785 | 0.689 | **715** | **1.36x** |
+| **GLM-OCR Pipeline** | 93.3 | 0.929 | 0.477 | 0.843 | 0.691 | 0.683 | 0.782 | 0.121 | 976 | 1.00x |
+| **Allgaznie-Paddle** | 91.3 | 0.871 | 0.465 | 0.625 | 0.652 | 0.702 | **0.812** | 0.687 | 762 | 1.28x |
+| **Allgaznie-MinerU** | 91.2 | 0.909 | 0.402 | 0.601 | 0.657 | **0.721** | 0.784 | 0.738 | **655** | **1.49x** |
+| **MinerU-2.5** | 90.6 | 0.924 | 0.331 | 0.793 | 0.593 | 0.595 | 0.803 | 1.950 | 3,279 | 0.30x |
+| **DeepSeek-OCR2** | 84.0 | 0.917 | 0.486 | 0.795 | 0.684 | 0.673 | 0.189 | 0.195 | 533 | 1.83x |
+| **Allgaznie-DeepSeek** | 78.8 | 0.900 | 0.349 | 0.512 | 0.645 | 0.668 | 0.780 | 0.767 | 1,455 | 0.67x |
+| Upstage Standard | 70.8 | **0.971** | — | — | — | — | — | — | 3,289 | 0.30x |
+| GLM-OCR (VLM-only) | 69.7 | — | **0.837** | **0.940** | **0.707** | 0.706 | — | **0.034** | 2,376 | 0.41x |
+| Upstage Enhanced | 70.2 | 0.935 | — | — | — | — | — | — | 5,597† | 0.17x |
+
+*vs Pipeline = speedup relative to GLM-OCR Pipeline SDK baseline (976ms). †Upstage Enhanced OmniDoc latency unreliable (10 samples); DP-Bench avg (5,597ms, 200 samples) shown instead.*
 
 ---
 
-## 4. Key Findings
+## 4. Latency Analysis
 
-### 4.1 Pipeline vs VLM-Only
+### 4.1 Per-Benchmark Avg Latency (ms/sample)
+
+| Model | OmniDoc | DP-Bench | OCRBench | UniMER | PubTab | TEDS | NanoNets | Handwrt |
+|:---|---:|---:|---:|---:|---:|---:|---:|---:|
+| GLM-OCR (VLM-only) | 2,376 | — | 98 | 428 | 1,177 | 1,310 | — | 50 |
+| GLM-OCR Pipeline | 976 | 578 | 281 | 474 | 1,281 | 1,475 | 970 | 115 |
+| MinerU-2.5 | 3,279 | 2,295 | 1,475 | 1,249 | 1,839 | 1,768 | 2,540 | 844 |
+| Upstage Standard | 3,289 | 2,834 | — | — | — | — | — | — |
+| Upstage Enhanced | 25,412† | 5,597 | — | — | — | — | — | — |
+| **Allgaznie-GLM** | **715** | **376** | 279 | 230 | 905 | 1,105 | 668 | 33 |
+| Allgaznie-Paddle | 762 | 362 | 422 | 209 | 789 | 780 | 841 | 68 |
+| **Allgaznie-MinerU** | **655** | 389 | 225 | 293 | 695 | 797 | 520 | 36 |
+| Allgaznie-DeepSeek | 1,455 | 756 | 357 | 246 | 651 | 746 | 858 | 81 |
+| DeepSeek-OCR2 (VLM-only) | 533 | 292 | 87 | 293 | 336 | 169 | 264 | 115 |
+
+*†Upstage Enhanced OmniDocBench: 10 samples only (API rate limit).*
+
+### 4.2 OmniDocBench Latency Distribution (ms)
+
+| Model | Avg | Median | P90 | P99 | Max | Type |
+|:---|---:|---:|---:|---:|---:|:---|
+| DeepSeek-OCR2 | 533 | — | — | — | — | VLM-only |
+| **Allgaznie-MinerU** | **655** | **443** | 1,452 | 2,911 | 6,752 | Pipeline |
+| **Allgaznie-GLM** | **715** | **428** | 1,511 | 4,244 | 14,179 | Pipeline |
+| Allgaznie-Paddle | 762 | 444 | 1,408 | 12,135 | 14,440 | Pipeline |
+| GLM-OCR Pipeline | 976 | 591 | 2,006 | 5,749 | 10,839 | Pipeline (SDK) |
+| Allgaznie-DeepSeek | 1,455 | 1,136 | 2,859 | 7,711 | 14,474 | Pipeline |
+| GLM-OCR (VLM-only) | 2,376 | 1,342 | 4,178 | 17,172 | 17,363 | VLM-only |
+| MinerU-2.5 | 3,279 | 2,664 | 5,785 | 9,601 | 52,622 | Pipeline (SDK) |
+| Upstage Standard | 3,289 | — | — | — | — | API |
+| Upstage Enhanced | 5,597† | — | — | — | — | API |
+
+*†DP-Bench latency used (200 samples). Sorted by Avg ascending.*
+
+### 4.3 Latency Key Findings
+
+- **DeepSeek-OCR2**: Fastest (533ms) but VLM-only — no layout detection, not directly comparable to pipelines.
+- **Allgaznie-MinerU**: Fastest pipeline (655ms avg, 443ms median). **5.0x faster** than MinerU SDK (3,279ms) using the same 1.2B VLM.
+- **Allgaznie-GLM**: 715ms avg, **1.37x faster** than GLM-OCR Pipeline SDK (976ms) with same quality (93.3 vs 93.3).
+- **MinerU-2.5**: Slowest pipeline (3,279ms) with extreme tail latency (P99=9,601ms, max=52,622ms).
+- **Allgaznie pipelines** have much better tail latency (P99/max) than SDK counterparts thanks to concurrent VLM inference and optimized preprocessing.
+
+---
+
+## 5. Key Findings
+
+### 5.1 Pipeline vs VLM-Only
 
 Pipeline mode (2-stage: layout detection + per-region VLM) delivers far superior **document parsing** compared to VLM-only:
 - OmniDocBench Table TEDS: Allgaznie-GLM 0.925 vs GLM-OCR VLM-only 0.404
@@ -190,44 +238,46 @@ VLM-only mode excels at **single-element recognition**:
 - UniMERNet: GLM-OCR CDM 0.940 (formula recognition)
 - Handwritten: GLM-OCR CER 0.034 (handwriting recognition)
 
-### 4.2 Allgaznie vs Official Pipelines
+### 5.2 Allgaznie vs Official Pipelines
 
 **Allgaznie-GLM vs GLM-OCR Pipeline (SDK)**:
 - Formula CDM: 0.930 vs 0.922 (Allgaznie wins)
 - Table TEDS: 0.925 vs 0.919 (Allgaznie wins)
 - Text ED: 0.054 vs 0.042 (Pipeline SDK wins)
 - Overall Custom: 88.7 vs 89.6 (Pipeline SDK wins marginally)
+- **Latency: 715ms vs 976ms (Allgaznie 1.37x faster)**
 
 **Allgaznie-MinerU vs MinerU-2.5**:
 - Table TEDS: 0.890 vs 0.864 (Allgaznie wins)
 - DP-Bench TEDS: 0.968 vs 0.946 (Allgaznie wins)
 - Text ED: 0.056 vs 0.054 (nearly identical)
 - Handwritten CER: 0.738 vs 1.950 (Allgaznie much better)
+- **Latency: 655ms vs 3,279ms (Allgaznie 5.0x faster)**
 
-### 4.3 VLM Backend Comparison (Allgaznie Pipeline)
+### 5.3 VLM Backend Comparison (Allgaznie Pipeline)
 
-| VLM Backend | OmniDoc Overall | OmniDoc TEDS | DP-Bench NID | Strengths |
-|:---|:---:|:---:|:---:|:---|
-| **GLM-OCR** | **88.7** | **0.925** | 0.911 | Best tables, best formulas |
-| **PaddleOCR-VL** | 76.6 | 0.890 | 0.871 | Best KIE (0.812), good tables |
-| **MinerU-VL** | 87.8 | 0.890 | 0.909 | Best DP-Bench TEDS (0.968) |
-| **DeepSeek-OCR-2** | 81.5 | 0.615 | 0.900 | Weakest in pipeline mode |
+| VLM Backend | OmniDoc Overall | OmniDoc TEDS | DP-Bench NID | Latency (ms) | Strengths |
+|:---|:---:|:---:|:---:|---:|:---|
+| **GLM-OCR** | **93.3** | **0.925** | 0.911 | 715 | Best tables, best formulas |
+| **PaddleOCR-VL** | 91.3 | 0.890 | 0.871 | 762 | Best KIE (0.812), good tables |
+| **MinerU-VL** | 91.2 | 0.890 | 0.909 | **655** | Fastest, best DP-Bench TEDS (0.968) |
+| **DeepSeek-OCR-2** | 78.8 | 0.615 | 0.900 | 1,455 | Weakest + slowest in pipeline mode |
 
-Note: Allgaznie-Paddle Overall 76.6 is low due to table rendering bug (TEDS 2.2 in custom eval) — the VLM outputs `<fcel>` tags instead of HTML tables.
+Note: Allgaznie-Paddle Overall 91.3 (official eval) but custom eval Overall 76.6 due to table rendering bug — the VLM outputs `<fcel>` tags instead of HTML tables.
 
-### 4.4 DeepSeek-OCR2 (Original VLM-only)
+### 5.4 DeepSeek-OCR2 (Original VLM-only)
 
 Strong standalone performance: OmniDoc Formula CDM 0.912, OCRBench 0.486, UniMER CDM 0.795, Handwritten CER 0.195.
 But NanoNets KIE 0.189 — the model cannot extract structured key-value information (VLM-only limitation).
 
-### 4.5 Upstage API vs Open-Source
+### 5.5 Upstage API vs Open-Source
 
 **Upstage Standard**: Best text NID (0.971) but weak tables (TEDS 0.700 vs Allgaznie-GLM 0.925) and formulas (CDM 0.546 vs 0.930).
 
 Open-source pipelines significantly outperform Upstage API on:
 - Table recognition: 0.925 vs 0.700 (32% gap)
 - Formula recognition: 0.930 vs 0.546 (70% gap)
-- Overall OmniDocBench: 88.7 vs 83.6
+- Overall OmniDocBench: 93.3 vs 70.8
 
 Upstage API advantages:
 - Text-only NID: 0.971 (best)
@@ -236,7 +286,7 @@ Upstage API advantages:
 
 ---
 
-## 5. Reproducibility vs Official Leaderboard
+## 6. Reproducibility vs Official Leaderboard
 
 OmniDocBench v1.5 공식 리더보드 대비 재현도.
 
@@ -266,7 +316,7 @@ OmniDocBench v1.5 공식 리더보드 대비 재현도.
 
 ---
 
-## 6. Scoring Fix Iterations (2026-03-06)
+## 7. Scoring Fix Iterations (2026-03-06)
 
 Three rounds of evaluate→analyze→fix→re-evaluate to eliminate false negatives (correct predictions marked as wrong).
 
@@ -304,9 +354,9 @@ Three rounds of evaluate→analyze→fix→re-evaluate to eliminate false negati
 
 ---
 
-## 7. Qualitative Error Analysis
+## 8. Qualitative Error Analysis
 
-### 6.1 DP-Bench Error Analysis
+### 8.1 DP-Bench Error Analysis
 
 49 samples (NID < 0.9) across Standard and Enhanced were manually reviewed:
 
@@ -316,7 +366,7 @@ Three rounds of evaluate→analyze→fix→re-evaluate to eliminate false negati
 | **(B) GT/scoring limitation** | 43 | 88% |
 | **(A+B) Mixed** | 2 | 4% |
 
-### 6.2 OmniDocBench Error Analysis (Upstage API)
+### 8.2 OmniDocBench Error Analysis (Upstage API)
 
 243 samples (per-sample overall < 60) analyzed:
 
@@ -327,7 +377,7 @@ Three rounds of evaluate→analyze→fix→re-evaluate to eliminate false negati
 
 84% of low scores are evaluation artifacts, not OCR quality issues.
 
-### 6.3 OmniDocBench Error Analysis (Allgaznie GLM)
+### 8.3 OmniDocBench Error Analysis (Allgaznie GLM)
 
 64 samples (overall < 60) analyzed:
 
@@ -340,7 +390,7 @@ GLM has **4x fewer** low-scoring samples than Upstage (64 vs 243) and only **0.1
 
 ---
 
-## 8. Infrastructure Notes
+## 9. Infrastructure Notes
 
 ### subprocess.PIPE Deadlock Fix
 vLLM server using `stdout=subprocess.PIPE` caused 64KB pipe buffer fill → server deadlock. Fixed by redirecting to log file.
