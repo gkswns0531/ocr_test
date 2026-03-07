@@ -73,20 +73,20 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 
 ### 2.2 OmniDocBench Custom Eval (with scoring fixes, per-type averages)
 
-| Model | Overall | Text | Table (351) | Formula (200) |
-|:---|:---:|:---:|:---:|:---:|
-| **GLM-OCR Pipeline** | **89.6** | **88.8** | 93.0 | 84.1 |
-| **Allgaznie-GLM** | 88.7 | 87.7 | **93.8** | **84.3** |
-| **MinerU-2.5** | 87.9 | 87.5 | 88.4 | 80.3 |
-| **Allgaznie-MinerU** | 87.8 | 87.4 | 89.9 | 82.0 |
-| **DeepSeek-OCR2** | 85.0 | 85.5 | 76.4 | 80.5 |
-| Upstage Standard | 83.6 | 88.7 | 74.1 | 46.5 |
-| Upstage Enhanced | 83.2 | 88.4 | 74.2 | 46.1 |
-| Allgaznie-DeepSeek | 81.5 | 84.1 | 64.9 | 74.4 |
-| GLM-OCR (VLM-only) | 78.8 | 82.7 | 49.1 | 71.5 |
-| Allgaznie-Paddle | 76.6 | 87.4 | 2.2 | 81.0 |
+| Model | Overall | Overall (no formula) | Text | Table (351) | Formula (200) |
+|:---|:---:|:---:|:---:|:---:|:---:|
+| **GLM-OCR Pipeline** | **89.6** | **90.6** | **88.8** | 93.0 | 84.1 |
+| **Allgaznie-GLM** | 88.7 | 90.0 | 87.7 | **93.8** | **84.3** |
+| **MinerU-2.5** | 87.9 | 89.5 | 87.5 | 88.4 | 80.3 |
+| **Allgaznie-MinerU** | 87.8 | 89.3 | 87.4 | 89.9 | 82.0 |
+| Allgaznie-Paddle | 76.6 | 87.3 | 87.4 | 2.2 | 81.0 |
+| Upstage Standard | 83.6 | 87.2 | 88.7 | 74.1 | 46.5 |
+| Upstage Enhanced | 83.2 | 86.8 | 88.4 | 74.2 | 46.1 |
+| **DeepSeek-OCR2** | 85.0 | 86.6 | 85.5 | 76.4 | 80.5 |
+| GLM-OCR (VLM-only) | 78.8 | 85.7 | 82.7 | 49.1 | 71.5 |
+| Allgaznie-DeepSeek | 81.5 | 84.3 | 84.1 | 64.9 | 74.4 |
 
-*Table/Formula scores averaged only over samples containing those element types.*
+*Overall (no formula) = per-sample avg of text + table only (formula 제외). Table/Formula scores averaged only over samples containing those element types. Sorted by Overall (no formula) desc.*
 
 ### 2.3 Upstage DP-Bench (200 samples)
 
