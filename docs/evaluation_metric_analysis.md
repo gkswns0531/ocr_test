@@ -275,3 +275,67 @@ OmniDocBench는 Pipeline에 유리하고, OCRBench는 VLM-only에 유리함. 단
 ### Insight 5: 정규화의 부재가 공정한 비교를 가로막음
 
 동일 벤치마크에서도 모델별 출력 형식(HTML/Markdown/PaddleOCR 태그)에 따라 전처리 필요 수준이 다름. 벤치마크 자체에 표준화된 정규화 파이프라인이 없으면, 각 연구팀의 전처리 품질이 점수에 반영됨 → 재현성 저해.
+
+---
+
+## 5. 제안: Execution-based Canonicalization (LLM + Code + EM)
+
+위에서 분류한 문제들의 공통 원인은 **표현 형식(format)의 다양성**을 현재 메트릭들이 처리하지 못한다는 것임. 이를 근본적으로 해결하기 위한 새로운 평가 방식을 제안.
+
+### 5.1 핵심 아이디어
+
+OCR/파싱 출력을 LLM에 입력하여 **canonical code**를 생성하게 하고, 그 코드를 실행한 결과를 **Exact Match (EM)**로 비교.
+
+```
+[GT text]   → LLM → code_gt   → exec() → canonical_output_gt
+[Pred text] → LLM → code_pred → exec() → canonical_output_pred
+                                          → EM 비교
+```
+
+GT와 예측 양쪽 모두 동일한 LLM 정규화를 거치므로, 표현 형식의 차이가 제거되고 **의미적 동치성(semantic equivalence)**만 남게 됨.
+
+### 5.2 요소별 적용 방안
+
+| 요소 | LLM 프롬프트 | 실행 결과 | EM 대상 |
+|:---|:---|:---|:---|
+| **수식** | "이 수식의 x=2일 때 값을 계산하는 Python 코드" | `eval()` → 숫자 | 숫자 EM |
+| **수식 (심볼릭)** | "sympy로 이 수식을 정규화하는 코드" | `sympy.simplify()` → canonical form | 문자열 EM |
+| **표** | "이 표를 pandas DataFrame → sorted CSV로 변환하는 코드" | `df.to_csv(sort=True)` | CSV 문자열 EM |
+| **텍스트** | 기존 Edit Distance로 충분 (format 문제가 적음) | — | — |
+
+### 5.3 해결되는 문제들
+
+| 현재 문제 | 현재 메트릭 | LLM+Code+EM |
+|:---|:---|:---|
+| `\frac{1}{2}` vs `\dfrac{1}{2}` vs `1/2` | CDM 렌더링 비교 (불안정) | `eval("1/2")` → `0.5` → EM |
+| HTML table vs Markdown table | TEDS (HTML 파싱 필요) | `→ sorted CSV` → EM |
+| `\operatorname{sin}` vs `\sin` | ED에서 13자 차이 | `math.sin(2)` → 동일 값 |
+| `<th>` vs `<td>`, `<thead>` 유무 | TEDS 감점 | CSV 변환 시 동일 |
+| 세그멘테이션 불일치 | element-wise 매칭 실패 | 전체 페이지 단위 처리 가능 |
+| TOC 점선, 특수문자 | regex 정규화 노가다 | LLM이 의미 기준으로 정규화 |
+
+### 5.4 기존 접근법과의 차이
+
+| 접근법 | 방식 | 한계 |
+|:---|:---|:---|
+| **LLM-as-Judge** (G-Eval 등) | LLM이 주관적으로 점수 매김 | 재현성 낮음, 점수 기준 불투명 |
+| **Code Generation Eval** (HumanEval) | 코드 자체가 GT, 실행 결과 EM | OCR/문서에 적용 불가 |
+| **CDM** | LaTeX → 렌더링 → 시각 비교 | 환경 의존적, 텍스트/표 불가 |
+| **제안 방식** | OCR 출력 → LLM → Code → 실행 → EM | Format-agnostic, 결정적, 재현 가능 |
+
+### 5.5 고려 사항 및 한계
+
+1. **LLM 비결정성**: 동일 입력에 다른 코드 생성 가능. `temperature=0` + 고정 프롬프트로 완화 가능하나 완벽하진 않음
+2. **심볼릭 수식**: `\int_0^1 f(x)dx` 등 수치 평가 불가능한 수식 존재. sympy symbolic equivalence로 대응 가능
+3. **평가 비용**: sample당 LLM 호출 추가. 다만 CDM(XeLaTeX + ImageMagick + Node.js)보다 오히려 저렴할 수 있음
+4. **LLM 에러 전파**: OCR 에러 + 코드 생성 에러 복합. GT/예측 양쪽 동일 처리로 상쇄 기대
+5. **코드 실행 보안**: 임의 코드 실행에 대한 샌드박싱 필요
+
+### 5.6 검증 실험 설계 (PoC)
+
+1. OmniDocBench에서 수식 50개, 표 50개 샘플링
+2. 각 샘플에 대해 기존 메트릭(CDM, TEDS, ED)과 제안 메트릭(LLM+Code+EM) 산출
+3. Human judgment (3명 이상)과의 상관계수(Spearman ρ) 비교
+4. 아티팩트 비율: 기존 84% → 제안 방식에서 X%로 감소 여부 측정
+
+**기대 결과**: Format mismatch에 의한 아티팩트가 대폭 감소하여, human judgment와의 상관관계가 기존 메트릭 대비 유의미하게 향상될 것으로 예상.
