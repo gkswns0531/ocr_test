@@ -222,7 +222,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 
 | Model | OmniDoc | DP-Bench | OCRBench | UniMER | PubTab | TEDS | NanoNets | Handwrt |
 |:---|---:|---:|---:|---:|---:|---:|---:|---:|
-| GLM-OCR (VLM-only) | 2,376 | — | 98 | 428 | 1,177 | 1,310 | — | 50 |
+| GLM-OCR (VLM-only) | 2,376 | 968 | 98 | 428 | 1,177 | 1,310 | 460 | 50 |
 | GLM-OCR Pipeline | 976 | 578 | 281 | 474 | 1,281 | 1,475 | 970 | 115 |
 | MinerU-2.5 | 3,279 | 2,295 | 1,475 | 1,249 | 1,839 | 1,768 | 2,540 | 844 |
 | Upstage Standard | 3,289 | 2,834 | — | — | — | — | — | — |
