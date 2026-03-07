@@ -1,6 +1,6 @@
 # OCR Benchmark Results Report
 
-**Date**: 2026-03-06 (re-evaluated with corrected VLM parameters + eval logic fixes)
+**Date**: 2026-03-07 (re-evaluated with corrected VLM parameters + eval logic fixes)
 **Environment**: NVIDIA RTX PRO 6000 Blackwell (96GB VRAM), vLLM 0.16.1rc1
 **Pipeline**: Allgaznie OCR (PP-DocLayoutV3 layout → region crop → per-region VLM → markdown)
 
@@ -106,6 +106,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | Allgaznie-DeepSeek | 0.900 | 0.712 | 0.757 |
 | Allgaznie-Paddle | 0.871 | 0.838 | 0.853 |
 | PaddleOCR-VL Pipeline | 0.884 | 0.952 | 0.969 |
+| GLM-OCR (VLM-only) | 0.119 | 0.102 | 0.104 |
 
 ### 2.4 OCRBench (1,000 samples)
 
@@ -132,7 +133,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | Allgaznie-Paddle | 0.625 | 0.414 | **0.867** |
 | Allgaznie-MinerU | 0.601 | 0.467 | 0.733 |
 | Allgaznie-GLM | 0.578 | 0.502 | 0.696 |
-| PaddleOCR-VL Pipeline | — | 0.188 | 0.789 |
+| PaddleOCR-VL Pipeline | 0.921 | 0.188 | 0.789 |
 | Allgaznie-DeepSeek | 0.512 | 0.631 | 0.366 |
 
 ### 2.6 PubTabNet Table Recognition (200 samples)
@@ -174,6 +175,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | GLM-OCR Pipeline | 0.782 |
 | Allgaznie-DeepSeek | 0.780 |
 | PaddleOCR-VL Pipeline | 0.810 |
+| GLM-OCR (VLM-only) | 0.888 |
 | DeepSeek-OCR2 | 0.189 |
 
 ### 2.9 Handwritten Forms (200 samples)
@@ -187,7 +189,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | Allgaznie-GLM | 0.689 | 0.760 |
 | Allgaznie-MinerU | 0.738 | 0.895 |
 | Allgaznie-DeepSeek | 0.767 | 0.824 |
-| PaddleOCR-VL Pipeline | 0.150 | 0.216 |
+| PaddleOCR-VL Pipeline | 1.070 | 1.321 |
 | MinerU-2.5 | 1.950 | 1.000 |
 
 ---
@@ -202,12 +204,12 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | **GLM-OCR Pipeline** | 93.3 | **93.8** | 0.929 | 0.477 | 0.843 | 0.691 | 0.683 | 0.782 | 0.121 | 976 | 1.00x |
 | **Allgaznie-Paddle** | 91.3 | 91.9 | 0.871 | 0.465 | 0.625 | 0.652 | 0.702 | **0.812** | 0.687 | 762 | 1.28x |
 | **Allgaznie-MinerU** | 91.2 | 91.7 | 0.909 | 0.402 | 0.601 | 0.657 | **0.721** | 0.784 | 0.738 | **655** | **1.49x** |
-| **PaddleOCR-VL Pipeline** | 92.7 | 91.7 | 0.884 | 0.471 | — | 0.694 | 0.712 | 0.810 | 0.150 | — | — |
+| **PaddleOCR-VL Pipeline** | 92.7 | 91.7 | 0.884 | 0.471 | 0.921 | 0.694 | 0.712 | 0.810 | 1.070 | — | — |
 | **MinerU-2.5** | 90.6 | 90.5 | 0.924 | 0.331 | 0.793 | 0.593 | 0.595 | 0.803 | 1.950 | 3,279 | 0.30x |
 | **DeepSeek-OCR2** | 84.0 | 80.4 | 0.917 | 0.486 | 0.795 | 0.684 | 0.673 | 0.189 | 0.195 | 533 | 1.83x |
 | **Allgaznie-DeepSeek** | 78.8 | 76.6 | 0.900 | 0.349 | 0.512 | 0.645 | 0.668 | 0.780 | 0.767 | 1,455 | 0.67x |
 | Upstage Standard | 70.8 | 78.9 | **0.971** | — | — | — | — | — | — | 3,289 | 0.30x |
-| GLM-OCR (VLM-only) | 69.7 | 63.8 | — | **0.837** | **0.940** | **0.707** | 0.706 | — | **0.034** | 2,376 | 0.41x |
+| GLM-OCR (VLM-only) | 69.7 | 63.8 | 0.119 | **0.837** | **0.940** | **0.707** | 0.706 | 0.888 | **0.034** | 2,376 | 0.41x |
 | Upstage Enhanced | 70.2 | 78.2 | 0.935 | — | — | — | — | — | — | 5,597† | 0.17x |
 
 *vs Pipeline = speedup relative to GLM-OCR Pipeline SDK baseline (976ms). †Upstage Enhanced OmniDoc latency unreliable (10 samples); DP-Bench avg (5,597ms, 200 samples) shown instead.*
@@ -272,6 +274,10 @@ VLM-only mode excels at **single-element recognition**:
 - OCRBench: GLM-OCR 0.837 (full-page understanding)
 - UniMERNet: GLM-OCR CDM 0.940 (formula recognition)
 - Handwritten: GLM-OCR CER 0.034 (handwriting recognition)
+- KIE: GLM-OCR ANLS 0.888 (key-value extraction)
+
+But VLM-only struggles with **structured document parsing**:
+- DP-Bench NID: GLM-OCR 0.119 (VLM outputs unstructured text dump vs GT's document structure)
 
 ### 5.2 Allgaznie vs Official Pipelines
 
@@ -329,7 +335,7 @@ OmniDocBench v1.5 공식 리더보드 대비 재현도.
 |:---|:---:|:---:|:---:|:---:|:---|
 | MinerU-2.5 | 90.67 | 90.6 | -0.04 | 99.96% | 거의 완벽 재현 |
 | GLM-OCR | 94.62* | 93.3 | -1.34 | 98.6% | Pipeline SDK로 재현. *HF 자체 발표값 |
-| PaddleOCR-VL | 92.86 | — | — | — | VLM-only OmniDocBench 추론 미수행 |
+| PaddleOCR-VL Pipeline | 92.86 | 92.7 | -0.17 | 99.8% | Pipeline SDK로 재현 (다른 장비) |
 | DeepSeek-OCR v1 | 87.01 | — | — | — | 리더보드 모델 (v1), 우리는 v2 사용 |
 
 리더보드에 우리 모델을 삽입하면:
@@ -340,14 +346,15 @@ OmniDocBench v1.5 공식 리더보드 대비 재현도.
 | **2** | **Allgaznie-GLM** | **93.3** | **우리** |
 | **3** | **GLM-OCR Pipeline (SDK)** | **93.3** | **우리** |
 | 4 | PaddleOCR-VL | 92.86 | 공식 |
-| **5** | **Allgaznie-Paddle** | **91.3** | **우리** |
-| **6** | **Allgaznie-MinerU** | **91.2** | **우리** |
-| 7 | MinerU2.5 | 90.67 | 공식 |
-| **8** | **MinerU-2.5 (재현)** | **90.6** | **우리** |
-| 9 | Qwen3-VL-235B | 89.15 | 공식 |
-| 10 | MonkeyOCR-pro-3B | 88.85 | 공식 |
-| 11 | Gemini-2.5 Pro | 88.03 | 공식 |
-| 12 | Deepseek-OCR v1 | 87.01 | 공식 |
+| **5** | **PaddleOCR-VL Pipeline (재현)** | **92.7** | **우리** |
+| **6** | **Allgaznie-Paddle** | **91.3** | **우리** |
+| **7** | **Allgaznie-MinerU** | **91.2** | **우리** |
+| 8 | MinerU2.5 | 90.67 | 공식 |
+| **9** | **MinerU-2.5 (재현)** | **90.6** | **우리** |
+| 10 | Qwen3-VL-235B | 89.15 | 공식 |
+| 11 | MonkeyOCR-pro-3B | 88.85 | 공식 |
+| 12 | Gemini-2.5 Pro | 88.03 | 공식 |
+| 13 | Deepseek-OCR v1 | 87.01 | 공식 |
 
 ---
 
