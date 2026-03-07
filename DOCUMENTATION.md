@@ -869,25 +869,30 @@ python3 eval_bench.py --model glm-ocr-pipeline --benchmarks omnidocbench
 
 ### Pipeline 모델
 
-| 벤치마크 | 메트릭 | 샘플 수 | GLM-OCR-P | PaddleOCR-VL-P | DeepSeek-OCR2 |
-|:---|:---|---:|---:|---:|---:|
-| **OmniDocBench** | Overall ↑ | 1,358 | 91.9 | 91.9 | 79.6 |
-| **Nanonets-KIE** | ANLS ↑ | 987/147 | 58.4% | 80.8% | **84.0%** |
-| **DP-Bench** | NID ↑ | ~200 | 87.6% | 87.4% | **90.1%** |
-| **DP-Bench** | TEDS ↑ | ~200 | 86.7% | **95.2%** | 83.0% |
-| **DP-Bench** | TEDS-struct ↑ | ~200 | 89.3% | **96.9%** | 86.0% |
+| 벤치마크 | 메트릭 | 샘플 수 | GLM-OCR-P | PaddleOCR-VL-P | DeepSeek-OCR2 | MinerU |
+|:---|:---|---:|---:|---:|---:|---:|
+| **OmniDocBench** | Overall ↑ | 1,358 | 91.9 | **92.7** | 79.6 | 90.6 |
+| **Nanonets-KIE** | ANLS ↑ | 987/147 | 58.4% | 81.0% | **84.0%** | - |
+| **DP-Bench** | NID ↑ | ~200 | 87.6% | 88.4% | 90.1% | **91.4%** |
+| **DP-Bench** | TEDS ↑ | ~200 | 86.7% | **95.2%** | 83.0% | 95.0% |
+| **DP-Bench** | TEDS-struct ↑ | ~200 | 89.3% | **96.9%** | 86.0% | - |
+| **OCRBench** | Accuracy ↑ | 1,000 | - | 47.1% | - | - |
+| **PubTabNet** | TEDS ↑ | 200 | - | 69.4% | - | - |
+| **TEDS_TEST** | TEDS ↑ | 200 | - | 71.2% | - | - |
+| **IAM Handwritten** | CER ↓ | 200 | - | 15.0% | - | - |
+| **UniMERNet** | Edit Dist ↓ | 200 | - | 18.8% | - | - |
 
 ### OmniDocBench 세부
 
-| 카테고리 | 메트릭 | GLM-OCR-P | PaddleOCR-VL-P | DeepSeek-OCR2 |
+| 카테고리 | 메트릭 | GLM-OCR-P | PaddleOCR-VL-P (재측정) | DeepSeek-OCR2 |
 |:---|:---|---:|---:|---:|
-| Text Block | 1−ED (ALL page) ↑ | 94.0% | **95.7%** | 88.1% |
-| Text Block | 1−ED (edit whole) ↑ | 86.1% | **92.8%** | 71.4% |
-| Table | TEDS ↑ | **89.9%** | 88.1% | 59.8% |
-| Table | TEDS-struct ↑ | **94.2%** | 91.9% | 63.9% |
-| Reading Order | 1−ED ↑ | 93.5% | **95.8%** | 89.1% |
-| Formula | CDM ↑ | **91.9%** | 91.8% | 90.9% |
-| Formula | 1−ED ↑ | **89.4%** | 89.0% | 82.8% |
+| Text Block | 1−ED (ALL page) ↑ | 94.0% | **95.6%** | 88.1% |
+| Text Block | 1−ED (edit whole) ↑ | 86.1% | **93.1%** | 71.4% |
+| Table | TEDS ↑ | **89.9%** | 87.8% | 59.8% |
+| Table | TEDS-struct ↑ | **94.2%** | 91.7% | 63.9% |
+| Reading Order | 1−ED ↑ | 93.5% | **95.7%** | 89.1% |
+| Formula | CDM ↑ | 91.9% | **94.6%** | 90.9% |
+| Formula | 1−ED ↑ | **89.0%** | 89.0% | 82.8% |
 
 ### 모델별 강점/약점
 
@@ -899,7 +904,7 @@ python3 eval_bench.py --model glm-ocr-pipeline --benchmarks omnidocbench
 
 **GLM-OCR-Pipeline**: 테이블 구조 강점 (TEDS 89.9%), 수식 CDM 근소 우위.
 
-**PaddleOCR-VL-Pipeline**: 텍스트 블록 강점 (95.7%), 읽기 순서 강점 (95.8%), KIE 크게 우위 (80.8% vs 58.4%).
+**PaddleOCR-VL-Pipeline**: ODB Overall 1위 (92.7), 수식 CDM 1위 (94.6%), 텍스트 블록 강점 (95.6%), 읽기 순서 강점 (95.7%), KIE 우위 (81.0% vs 58.4%). OCRBench/PubTabNet/TEDS/손글씨는 파이프라인 특성상 Direct VLM 대비 낮음.
 
 ---
 
@@ -910,7 +915,7 @@ python3 eval_bench.py --model glm-ocr-pipeline --benchmarks omnidocbench
 | 벤치마크 | 모델 | 우리 결과 | 공식 발표 | Gap | 원인 |
 |:---|:---|---:|---:|---:|:---|
 | OmniDocBench | GLM-OCR-P | 91.9 | 94.62 | −2.7 | 파이프라인 구현 차이 |
-| OmniDocBench | PaddleOCR-VL-P | 91.9 | 94.50 | −2.6 | 파이프라인 구현 차이 |
+| OmniDocBench | PaddleOCR-VL-P | 92.7 | 94.50 | −1.8 | 파이프라인 구현 차이 |
 | OmniDocBench | DeepSeek-OCR2 | 79.6 | 91.09 | −11.5 | VLM-direct vs 파이프라인 |
 | OCRBench | GLM-OCR | 83.8 | 94.0 | −10.2 | VLM 추론 환경 차이 |
 | UniMERNet CDM | GLM-OCR | 94.1 | 96.5 | −2.4 | 모델 성능 차이 |

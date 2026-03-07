@@ -16,6 +16,7 @@
 | `deepseek-ocr2` | DeepSeek-OCR-2 | 3.4B | VLM-only | FP8 |
 | `allgaznie-glm` | Allgaznie + GLM-OCR | 1.3B + layout | Pipeline | FP8 |
 | `allgaznie-paddle` | Allgaznie + PaddleOCR-VL | 1.0B + layout | Pipeline | BF16 |
+| `paddleocr-vl-pipeline` | PaddleOCR-VL Pipeline (SDK) | 1.0B + layout | Pipeline | BF16 |
 | `allgaznie-mineru` | Allgaznie + MinerU-VL | 1.2B + layout | Pipeline | BF16 |
 | `allgaznie-deepseek` | Allgaznie + DeepSeek-OCR-2 | 3.4B + layout | Pipeline | FP8 |
 | `upstage-standard` | Upstage Document Parse (Standard) | — | API | — |
@@ -44,6 +45,7 @@ Overall = ((1 - Text_ED) × 100 + Table_TEDS + Formula_CDM) / 3
 | **MinerU-2.5** | 90.6 | 0.054 | 91.0 | 86.4 | 90.9 | **0.052** |
 | **DeepSeek-OCR2** | 84.0 | 0.073 | 91.2 | 68.2 | 72.0 | 0.073 |
 | **Allgaznie-DeepSeek** | 78.8 | 0.084 | 83.4 | 61.5 | 67.4 | 0.083 |
+| **PaddleOCR-VL Pipeline** | 92.7 | 0.044 | 94.6 | 87.8 | 91.7 | 0.043 |
 | Upstage Standard | 70.8 | 0.122 | 54.6 | 70.0 | 77.5 | 0.143 |
 | Upstage Enhanced | 70.2 | 0.126 | 54.2 | 69.0 | 75.6 | 0.150 |
 | GLM-OCR (VLM-only) | 69.7 | 0.128 | 81.5 | 40.4 | 42.4 | 0.143 |
@@ -60,6 +62,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | **Allgaznie-GLM** | **93.3** | 93.5 | +0.2 |
 | **Allgaznie-Paddle** | 91.3 | 91.9 | +0.6 |
 | **Allgaznie-MinerU** | 91.2 | 91.7 | +0.5 |
+| **PaddleOCR-VL Pipeline** | 92.7 | 91.7 | -1.0 |
 | **MinerU-2.5** | 90.6 | 90.5 | -0.1 |
 | DeepSeek-OCR2 | 84.0 | 80.4 | -3.6 |
 | Upstage Standard | 70.8 | 78.9 | +8.1 |
@@ -78,6 +81,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | **GLM-OCR Pipeline** | **89.6** | **90.6** | **88.8** | 93.0 | 84.1 |
 | **Allgaznie-GLM** | 88.7 | 90.0 | 87.7 | **93.8** | **84.3** |
 | **MinerU-2.5** | 87.9 | 89.5 | 87.5 | 88.4 | 80.3 |
+| **PaddleOCR-VL Pipeline** | 88.5 | 88.8 | 87.2 | 91.3 | 89.3 |
 | **Allgaznie-MinerU** | 87.8 | 89.3 | 87.4 | 89.9 | 82.0 |
 | Allgaznie-Paddle | 76.6 | 87.3 | 87.4 | 2.2 | 81.0 |
 | Upstage Standard | 83.6 | 87.2 | 88.7 | 74.1 | 46.5 |
@@ -101,6 +105,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | Allgaznie-MinerU | 0.909 | **0.968** | **0.975** |
 | Allgaznie-DeepSeek | 0.900 | 0.712 | 0.757 |
 | Allgaznie-Paddle | 0.871 | 0.838 | 0.853 |
+| PaddleOCR-VL Pipeline | 0.884 | 0.952 | 0.969 |
 
 ### 2.4 OCRBench (1,000 samples)
 
@@ -113,6 +118,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | Allgaznie-GLM | 0.463 |
 | Allgaznie-MinerU | 0.402 |
 | Allgaznie-DeepSeek | 0.349 |
+| PaddleOCR-VL Pipeline | 0.471 |
 | MinerU-2.5 | 0.331 |
 
 ### 2.5 UniMERNet Formula Recognition (200 samples)
@@ -126,6 +132,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | Allgaznie-Paddle | 0.625 | 0.414 | **0.867** |
 | Allgaznie-MinerU | 0.601 | 0.467 | 0.733 |
 | Allgaznie-GLM | 0.578 | 0.502 | 0.696 |
+| PaddleOCR-VL Pipeline | — | 0.188 | 0.789 |
 | Allgaznie-DeepSeek | 0.512 | 0.631 | 0.366 |
 
 ### 2.6 PubTabNet Table Recognition (200 samples)
@@ -139,6 +146,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | Allgaznie-Paddle | 0.652 | 0.848 |
 | Allgaznie-DeepSeek | 0.645 | 0.837 |
 | Allgaznie-GLM | 0.642 | 0.842 |
+| PaddleOCR-VL Pipeline | 0.694 | 0.913 |
 | MinerU-2.5 | 0.593 | 0.782 |
 
 ### 2.7 TEDS Test Table Recognition (200 samples)
@@ -152,6 +160,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | Allgaznie-GLM | 0.678 | 0.883 |
 | DeepSeek-OCR2 | 0.673 | 0.861 |
 | Allgaznie-DeepSeek | 0.668 | 0.850 |
+| PaddleOCR-VL Pipeline | 0.712 | 0.921 |
 | MinerU-2.5 | 0.595 | 0.747 |
 
 ### 2.8 NanoNets-KIE (988 samples)
@@ -164,6 +173,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | Allgaznie-MinerU | 0.784 |
 | GLM-OCR Pipeline | 0.782 |
 | Allgaznie-DeepSeek | 0.780 |
+| PaddleOCR-VL Pipeline | 0.810 |
 | DeepSeek-OCR2 | 0.189 |
 
 ### 2.9 Handwritten Forms (200 samples)
@@ -177,6 +187,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | Allgaznie-GLM | 0.689 | 0.760 |
 | Allgaznie-MinerU | 0.738 | 0.895 |
 | Allgaznie-DeepSeek | 0.767 | 0.824 |
+| PaddleOCR-VL Pipeline | 0.150 | 0.216 |
 | MinerU-2.5 | 1.950 | 1.000 |
 
 ---
@@ -191,6 +202,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | **GLM-OCR Pipeline** | 93.3 | **93.8** | 0.929 | 0.477 | 0.843 | 0.691 | 0.683 | 0.782 | 0.121 | 976 | 1.00x |
 | **Allgaznie-Paddle** | 91.3 | 91.9 | 0.871 | 0.465 | 0.625 | 0.652 | 0.702 | **0.812** | 0.687 | 762 | 1.28x |
 | **Allgaznie-MinerU** | 91.2 | 91.7 | 0.909 | 0.402 | 0.601 | 0.657 | **0.721** | 0.784 | 0.738 | **655** | **1.49x** |
+| **PaddleOCR-VL Pipeline** | 92.7 | 91.7 | 0.884 | 0.471 | — | 0.694 | 0.712 | 0.810 | 0.150 | — | — |
 | **MinerU-2.5** | 90.6 | 90.5 | 0.924 | 0.331 | 0.793 | 0.593 | 0.595 | 0.803 | 1.950 | 3,279 | 0.30x |
 | **DeepSeek-OCR2** | 84.0 | 80.4 | 0.917 | 0.486 | 0.795 | 0.684 | 0.673 | 0.189 | 0.195 | 533 | 1.83x |
 | **Allgaznie-DeepSeek** | 78.8 | 76.6 | 0.900 | 0.349 | 0.512 | 0.645 | 0.668 | 0.780 | 0.767 | 1,455 | 0.67x |
