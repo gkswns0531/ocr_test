@@ -17,6 +17,7 @@
 | **Allgaznie-GLM** | GLM-OCR 1.3B | 1.3B | PP-DocLayoutV3 | FP8 + 10 optimizations |
 | **Allgaznie-MinerU** | MinerU-VL 1.2B | 1.2B | PP-DocLayoutV3 | FP8 + 10 optimizations |
 | **Upstage Standard** | — | — | Upstage API | Cloud API |
+| **Azure Layout** | — | — | Azure DI API (S0) | Cloud API |
 
 ### 1.2 VLM-Only Models (reference, single-image inference)
 
@@ -52,14 +53,18 @@ Full document pages with mixed content (text, tables, formulas, figures). Metric
 | Allgaznie-MinerU | 861ms | 94.4 | 81.7 | 90.4 | 88.5 | 92.8 | 89.6 |
 | MinerU | 3,279ms | 94.6 | 80.5 | 91.0 | 86.4 | 94.8 | 89.4 |
 | Upstage Standard | 3,289ms | 87.8 | 50.3 | 54.6 | 70.0 | 85.7 | 69.6 |
+| Azure Layout | 7,436ms | 86.7 | — | N/A† | 73.0 | — | — |
 
 **Score calculation**: Text = (1 - text_block_Edit_dist) × 100, Formula ED = (1 - display_formula_Edit_dist) × 100, Table TEDS = table_TEDS_all × 100, Reading Order = (1 - reading_order_Edit_dist) × 100, Overall = average of 5 metrics.
+
+*†Azure Layout은 수식을 LaTeX로 출력하지 않아 CDM/Formula ED 계산 불가. Overall 미산출.*
 
 **Key findings**:
 - Allgaznie-GLM achieves the best overall at **731ms** — 1.34x faster than GLM-OCR-Pipeline with equivalent quality
 - Allgaznie-MinerU achieves **3.8x speedup** over MinerU (861ms vs 3,279ms) with +0.2 overall quality improvement
 - Both Allgaznie models surpass their SDK counterparts in Table TEDS
 - Upstage Standard API significantly underperforms on formula recognition (CDM 54.6%)
+- Azure Layout: Text 성능은 Upstage와 유사 (86.7% vs 87.8%), Table은 소폭 우위 (73.0 vs 70.0), 수식 미지원, 레이턴시 최하위 (7,436ms)
 
 ### 2.2 Upstage DP-Bench (200 samples)
 
@@ -72,11 +77,13 @@ Document parsing benchmark from Upstage. Metrics: NID (Normalized Information Di
 | GLM-OCR-Pipeline | 578ms | **92.0** | 93.1 | 96.1 |
 | Allgaznie-GLM | **430ms** | 89.9 | 92.9 | 95.8 |
 | Upstage Standard | 2,834ms | **95.7** | 91.6 | 92.5 |
+| Azure Layout | 5,976ms | 87.6 | 87.4 | 89.4 |
 
 **Key findings**:
 - **Allgaznie-MinerU leads TEDS (96.2%) and TEDS-S (97.3%)** — highest among all models
 - Upstage Standard leads in NID (95.7%) but trails in TEDS/TEDS-S
 - Allgaznie-GLM fastest at 430ms with competitive quality
+- Azure Layout: NID 87.6% (Upstage 95.7% 대비 열세), TEDS 87.4% (Upstage 91.6% 대비 열세), 레이턴시 5,976ms
 
 ### 2.3 Nanonets KIE (987 samples)
 

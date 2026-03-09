@@ -21,10 +21,11 @@
 | `allgaznie-deepseek` | Allgaznie + DeepSeek-OCR-2 | 3.4B + layout | Pipeline | FP8 |
 | `upstage-standard` | Upstage Document Parse (Standard) | — | API | — |
 | `upstage-enhanced` | Upstage Document Parse (Enhanced) | — | API | — |
+| `azure-layout` | Azure Document Intelligence Layout (S0) | — | API | — |
 
 **VLM-only**: Full-page image → VLM → text (single pass)
 **Pipeline**: Image → Layout Detection → Region Crop → Per-region VLM → Markdown Assembly (2-stage)
-**API**: Cloud API — full-page image → API → markdown (Upstage Document Parse v260128)
+**API**: Cloud API — full-page image → API → markdown (Upstage Document Parse v260128 / Azure DI prebuilt-layout 2024-11-30)
 
 ---
 
@@ -48,7 +49,10 @@ Overall = ((1 - Text_ED) × 100 + Table_TEDS + Formula_CDM) / 3
 | **PaddleOCR-VL Pipeline** | 92.7 | 0.044 | 94.6 | 87.8 | 91.7 | 0.043 |
 | Upstage Standard | 70.8 | 0.122 | 54.6 | 70.0 | 77.5 | 0.143 |
 | Upstage Enhanced | 70.2 | 0.126 | 54.2 | 69.0 | 75.6 | 0.150 |
+| Azure Layout | —† | 0.133 | N/A† | 73.0 | — | — |
 | GLM-OCR (VLM-only) | 69.7 | 0.128 | 81.5 | 40.4 | 42.4 | 0.143 |
+
+*†Azure Layout은 수식을 LaTeX로 출력하지 않아 Formula CDM 계산 불가. Overall 산출 불가.*
 
 #### Overall without Formula (Text + Table only)
 
@@ -66,6 +70,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | **MinerU-2.5** | 90.6 | 90.5 | -0.1 |
 | DeepSeek-OCR2 | 84.0 | 80.4 | -3.6 |
 | Upstage Standard | 70.8 | 78.9 | +8.1 |
+| Azure Layout | —† | 79.8 | — |
 | Upstage Enhanced | 70.2 | 78.2 | +8.0 |
 | Allgaznie-DeepSeek | 78.8 | 76.6 | -2.2 |
 | GLM-OCR (VLM-only) | 69.7 | 63.8 | -5.9 |
@@ -86,11 +91,13 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | Allgaznie-Paddle | 76.6 | 87.3 | 87.4 | 2.2 | 81.0 |
 | Upstage Standard | 83.6 | 87.2 | 88.7 | 74.1 | 46.5 |
 | Upstage Enhanced | 83.2 | 86.8 | 88.4 | 74.2 | 46.1 |
+| Azure Layout | 80.9 | 85.6 | 86.7 | 73.0 | 22.2† |
 | **DeepSeek-OCR2** | 85.0 | 86.6 | 85.5 | 76.4 | 80.5 |
 | GLM-OCR (VLM-only) | 78.8 | 85.7 | 82.7 | 49.1 | 71.5 |
 | Allgaznie-DeepSeek | 81.5 | 84.3 | 84.1 | 64.9 | 74.4 |
 
 *Overall (no formula) = per-sample avg of text + table only (formula 제외). Table/Formula scores averaged only over samples containing those element types. Sorted by Overall (no formula) desc.*
+*†Azure Layout Formula: edit distance 기반 (CDM 아님). Azure는 수식을 LaTeX로 출력하지 않아 CDM 계산 불가.*
 
 ### 2.3 Upstage DP-Bench (200 samples)
 
@@ -104,6 +111,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | Allgaznie-GLM | 0.911 | 0.928 | 0.960 |
 | Allgaznie-MinerU | 0.909 | **0.968** | **0.975** |
 | Allgaznie-DeepSeek | 0.900 | 0.712 | 0.757 |
+| Azure Layout | 0.876 | 0.874 | 0.894 |
 | Allgaznie-Paddle | 0.871 | 0.838 | 0.853 |
 | PaddleOCR-VL Pipeline | 0.884 | 0.952 | 0.969 |
 | GLM-OCR (VLM-only) | 0.119 | 0.102 | 0.104 |
@@ -209,10 +217,11 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | **DeepSeek-OCR2** | 84.0 | 80.4 | 0.917 | 0.486 | 0.795 | 0.684 | 0.673 | 0.189 | 0.195 | 533 | 1.83x |
 | **Allgaznie-DeepSeek** | 78.8 | 76.6 | 0.900 | 0.349 | 0.512 | 0.645 | 0.668 | 0.780 | 0.767 | 1,455 | 0.67x |
 | Upstage Standard | 70.8 | 78.9 | **0.971** | — | — | — | — | — | — | 3,289 | 0.30x |
+| Azure Layout | —‡ | 79.8 | 0.876 | — | — | — | — | — | — | 7,436 | 0.13x |
 | GLM-OCR (VLM-only) | 69.7 | 63.8 | 0.119 | **0.837** | **0.940** | **0.707** | 0.706 | 0.888 | **0.034** | 2,376 | 0.41x |
 | Upstage Enhanced | 70.2 | 78.2 | 0.935 | — | — | — | — | — | — | 5,597† | 0.17x |
 
-*vs Pipeline = speedup relative to GLM-OCR Pipeline SDK baseline (976ms). †Upstage Enhanced OmniDoc latency unreliable (10 samples); DP-Bench avg (5,597ms, 200 samples) shown instead.*
+*vs Pipeline = speedup relative to GLM-OCR Pipeline SDK baseline (976ms). †Upstage Enhanced OmniDoc latency unreliable (10 samples); DP-Bench avg (5,597ms, 200 samples) shown instead. ‡Azure Layout: Formula CDM 산출 불가로 Overall 미산출.*
 
 ---
 
@@ -227,6 +236,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | MinerU-2.5 | 3,279 | 2,295 | 1,475 | 1,249 | 1,839 | 1,768 | 2,540 | 844 |
 | Upstage Standard | 3,289 | 2,834 | — | — | — | — | — | — |
 | Upstage Enhanced | 25,412† | 5,597 | — | — | — | — | — | — |
+| Azure Layout | 7,436 | 5,976 | — | — | — | — | — | — |
 | **Allgaznie-GLM** | **715** | **376** | 279 | 230 | 905 | 1,105 | 668 | 33 |
 | Allgaznie-Paddle | 762 | 362 | 422 | 209 | 789 | 780 | 841 | 68 |
 | **Allgaznie-MinerU** | **655** | 389 | 225 | 293 | 695 | 797 | 520 | 36 |
@@ -249,6 +259,7 @@ Overall (no formula) = ((1 - Text_ED) × 100 + Table_TEDS) / 2
 | MinerU-2.5 | 3,279 | 2,664 | 5,785 | 9,601 | 52,622 | Pipeline (SDK) |
 | Upstage Standard | 3,289 | — | — | — | — | API |
 | Upstage Enhanced | 5,597† | — | — | — | — | API |
+| Azure Layout | 7,436 | 6,693 | 10,486 | 21,092 | 47,428 | API |
 
 *†DP-Bench latency used (200 samples). Sorted by Avg ascending.*
 
@@ -311,19 +322,32 @@ Note: Allgaznie-Paddle Overall 91.3 (official eval) but custom eval Overall 76.6
 Strong standalone performance: OmniDoc Formula CDM 0.912, OCRBench 0.486, UniMER CDM 0.795, Handwritten CER 0.195.
 But NanoNets KIE 0.189 — the model cannot extract structured key-value information (VLM-only limitation).
 
-### 5.5 Upstage API vs Open-Source
+### 5.5 API Models vs Open-Source
 
 **Upstage Standard**: Best text NID (0.971) but weak tables (TEDS 0.700 vs Allgaznie-GLM 0.925) and formulas (CDM 0.546 vs 0.930).
 
-Open-source pipelines significantly outperform Upstage API on:
-- Table recognition: 0.925 vs 0.700 (32% gap)
-- Formula recognition: 0.930 vs 0.546 (70% gap)
-- Overall OmniDocBench: 93.3 vs 70.8
+**Azure Layout**: Text ED 0.133 (Upstage 0.122과 유사), Table TEDS 73.0 (Upstage 70.0 대비 소폭 우위). 수식 인식 미지원 (LaTeX 출력 불가).
 
-Upstage API advantages:
-- Text-only NID: 0.971 (best)
+| | Upstage Standard | Azure Layout | Allgaznie-GLM |
+|:---|:---:|:---:|:---:|
+| OmniDoc Text (1-ED) | 87.8% | 86.7% | 94.6% |
+| OmniDoc Table TEDS | 70.0 | 73.0 | 92.5 |
+| OmniDoc Formula | CDM 54.6 | N/A† | CDM 93.0 |
+| DP-Bench NID | **0.971** | 0.876 | 0.911 |
+| DP-Bench TEDS | 0.916 | 0.874 | 0.928 |
+| Latency (OmniDoc) | 3,289ms | 7,436ms | 715ms |
+
+*†Azure Layout은 수식을 LaTeX로 출력하지 않음.*
+
+Open-source pipelines significantly outperform both API services:
+- Table recognition: Allgaznie-GLM 0.925 vs Upstage 0.700 / Azure 0.730
+- Formula recognition: Allgaznie-GLM CDM 0.930 vs Upstage 0.546 / Azure N/A
+- Latency: Allgaznie-GLM 715ms vs Upstage 3,289ms / Azure 7,436ms (4.6x / 10.4x faster)
+
+API advantages:
 - No GPU required
 - Consistent quality without model management
+- Upstage: Best text NID (0.971)
 
 ---
 

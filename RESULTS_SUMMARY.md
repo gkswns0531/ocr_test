@@ -1,8 +1,8 @@
 # OCR Benchmark Results Summary
 
-> Date: 2026-03-06 | GPU: NVIDIA RTX PRO 6000 Blackwell 98GB
+> Date: 2026-03-09 | GPU: NVIDIA RTX PRO 6000 Blackwell 98GB
 > vLLM 0.16.1rc1 | PyTorch 2.10 | CUDA 12.8
-> Scope: GLM-OCR ecosystem + MinerU (PaddleOCR-VL, DeepSeek-OCR2 excluded)
+> Scope: GLM-OCR ecosystem + MinerU + Azure Document Intelligence Layout
 
 ---
 
@@ -35,6 +35,8 @@
 | GLM-OCR VLM / TEDS-TEST | 1,310 | 200 |
 | GLM-OCR VLM / OmniDocBench | 2,376 | 1,355 |
 | MinerU / OmniDocBench | 3,279 | 1,355 |
+| Azure Layout / OmniDocBench | 7,436 | 1,354 |
+| Azure Layout / DP-Bench | 5,976 | 200 |
 
 ### Latency Analysis
 
@@ -58,12 +60,14 @@
 
 > Allgaznie-GLM matches the official SDK on all metrics. Formula CDM was previously 26.7% due to a layout label mapping bug (display_formula regions were silently dropped). Fixed by adding `"formula"` to the label-to-task mapping in `layout.py`.
 
-### VLM-Only (single-pass, no layout detection)
+### VLM-Only / API (single-pass, no layout detection)
 
 | Model | Text (1-ED) | Table (TEDS) | Formula (CDM) | Overall |
 |:---|---:|---:|---:|---:|
 | GLM-OCR | 87.2% | 40.4% | 81.5% | 69.7 |
+| Azure Layout (API) | 86.7% | 73.0% | N/A† | — |
 
+> † Azure Layout은 수식을 LaTeX로 출력하지 않아 CDM 계산 불가. 수식을 plain text로 OCR하거나 누락함 (edit distance 기반 formula score = 22.2).
 > VLM-only OmniDocBench is not a fair comparison -- the benchmark requires layout detection for table/formula extraction. Included for reference only.
 
 ---
@@ -74,8 +78,10 @@
 |:---|---:|---:|---:|
 | **GLM-OCR Pipeline** | **92.0%** | **93.1%** | 78.2% |
 | Allgaznie-GLM | 89.9% | 92.9% | **78.6%** |
+| Azure Layout (API) | 87.6% | 87.4% | — |
 
 > Allgaznie-GLM matches or slightly trails the official SDK on structured extraction tasks.
+> Azure Layout: NID 87.6% (text-only), TEDS 87.4% (42 table samples). Nanonets-KIE 미실시.
 
 ---
 

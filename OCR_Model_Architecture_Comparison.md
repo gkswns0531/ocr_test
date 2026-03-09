@@ -323,7 +323,7 @@ PDF/이미지/Office 문서
 | **DeepSeek-OCR 2** | **91.09** | End-to-End 최고 |
 | MinerU | - | 공식 수치 미확인 |
 | Upstage | TEDS 93.48 | 표 구조 특화 벤치마크 |
-| Azure Layout | - | 공식 수치 미공개 |
+| Azure Layout | Text 86.7, Table 73.0 | 자체 벤치마크. 수식 LaTeX 미지원 (CDM N/A) |
 
 ### 3.3 기능 비교
 
