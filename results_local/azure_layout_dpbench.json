@@ -1,0 +1,2095 @@
+{
+  "aggregate": {
+    "nid": 0.8759413489965441,
+    "teds": 0.8737362517832191,
+    "teds_structure": 0.8935843451288485
+  },
+  "per_sample": [
+    {
+      "sample_id": "dpbench_01030000000001.pdf",
+      "file_name": "00000.jpg",
+      "idx": 0,
+      "scores": {
+        "nid": 0.9899280575539569
+      },
+      "latency_ms": 7879.096031188965,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000002.pdf",
+      "file_name": "00001.jpg",
+      "idx": 1,
+      "scores": {
+        "nid": 0.9894121942314713
+      },
+      "latency_ms": 5618.7169551849365,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000003.pdf",
+      "file_name": "00002.jpg",
+      "idx": 2,
+      "scores": {
+        "nid": 0.9844365272829552
+      },
+      "latency_ms": 5716.179847717285,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000004.pdf",
+      "file_name": "00003.jpg",
+      "idx": 3,
+      "scores": {
+        "nid": 0.9887550200803212
+      },
+      "latency_ms": 7924.792051315308,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000005.pdf",
+      "file_name": "00004.jpg",
+      "idx": 4,
+      "scores": {
+        "nid": 0.19801980198019797
+      },
+      "latency_ms": 4161.8146896362305,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000006.pdf",
+      "file_name": "00005.jpg",
+      "idx": 5,
+      "scores": {
+        "nid": 0.23220973782771537
+      },
+      "latency_ms": 7062.856912612915,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000007.pdf",
+      "file_name": "00006.jpg",
+      "idx": 6,
+      "scores": {
+        "nid": 0.9450072358900145
+      },
+      "latency_ms": 5532.5071811676025,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000008.pdf",
+      "file_name": "00007.jpg",
+      "idx": 7,
+      "scores": {
+        "nid": 0.9719699960521121
+      },
+      "latency_ms": 7963.347911834717,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000009.pdf",
+      "file_name": "00008.jpg",
+      "idx": 8,
+      "scores": {
+        "nid": 0.7595441595441595
+      },
+      "latency_ms": 8598.082065582275,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000010.pdf",
+      "file_name": "00009.jpg",
+      "idx": 9,
+      "scores": {
+        "nid": 0.9292440139897767
+      },
+      "latency_ms": 8211.941003799438,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000011.pdf",
+      "file_name": "00010.jpg",
+      "idx": 10,
+      "scores": {
+        "nid": 0.9705603038936372
+      },
+      "latency_ms": 7369.236946105957,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000012.pdf",
+      "file_name": "00011.jpg",
+      "idx": 11,
+      "scores": {
+        "nid": 0.953960288020947
+      },
+      "latency_ms": 6955.932140350342,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000013.pdf",
+      "file_name": "00012.jpg",
+      "idx": 12,
+      "scores": {
+        "nid": 0.9605026929982047
+      },
+      "latency_ms": 7121.105909347534,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000014.pdf",
+      "file_name": "00013.jpg",
+      "idx": 13,
+      "scores": {
+        "nid": 0.961026837806301
+      },
+      "latency_ms": 7463.549852371216,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000015.pdf",
+      "file_name": "00014.jpg",
+      "idx": 14,
+      "scores": {
+        "nid": 0.7814761215629522
+      },
+      "latency_ms": 7576.201915740967,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000016.pdf",
+      "file_name": "00015.jpg",
+      "idx": 15,
+      "scores": {
+        "nid": 0.061361457334611735
+      },
+      "latency_ms": 6514.501094818115,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000017.pdf",
+      "file_name": "00016.jpg",
+      "idx": 16,
+      "scores": {
+        "nid": 0.9817020040662213
+      },
+      "latency_ms": 6224.539995193481,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000018.pdf",
+      "file_name": "00017.jpg",
+      "idx": 17,
+      "scores": {
+        "nid": 0.02147651006711404
+      },
+      "latency_ms": 5970.171928405762,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000019.pdf",
+      "file_name": "00018.jpg",
+      "idx": 18,
+      "scores": {
+        "nid": 0.9914024717893606
+      },
+      "latency_ms": 5368.7849044799805,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000020.pdf",
+      "file_name": "00019.jpg",
+      "idx": 19,
+      "scores": {
+        "nid": 0.9479090242112986
+      },
+      "latency_ms": 5038.56897354126,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000021.pdf",
+      "file_name": "00020.jpg",
+      "idx": 20,
+      "scores": {
+        "nid": 0.9918651946542708
+      },
+      "latency_ms": 5445.243835449219,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000022.pdf",
+      "file_name": "00021.jpg",
+      "idx": 21,
+      "scores": {
+        "nid": 0.9727642276422764
+      },
+      "latency_ms": 7168.924808502197,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000023.pdf",
+      "file_name": "00022.jpg",
+      "idx": 22,
+      "scores": {
+        "nid": 0.9873417721518988
+      },
+      "latency_ms": 5225.876092910767,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000024.pdf",
+      "file_name": "00023.jpg",
+      "idx": 23,
+      "scores": {
+        "nid": 0.9882448317794893
+      },
+      "latency_ms": 5216.5398597717285,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000025.pdf",
+      "file_name": "00024.jpg",
+      "idx": 24,
+      "scores": {
+        "nid": 0.9808568824065633
+      },
+      "latency_ms": 5820.0719356536865,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000026.pdf",
+      "file_name": "00025.jpg",
+      "idx": 25,
+      "scores": {
+        "nid": 0.983666896710375
+      },
+      "latency_ms": 6973.021984100342,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000027.pdf",
+      "file_name": "00026.jpg",
+      "idx": 26,
+      "scores": {
+        "nid": 0.4305555555555556
+      },
+      "latency_ms": 7545.188665390015,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000028.pdf",
+      "file_name": "00027.jpg",
+      "idx": 27,
+      "scores": {
+        "nid": 0.9853738701725555
+      },
+      "latency_ms": 7344.509840011597,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000029.pdf",
+      "file_name": "00028.jpg",
+      "idx": 28,
+      "scores": {
+        "nid": 0.9799002569140094
+      },
+      "latency_ms": 7187.646150588989,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000030.pdf",
+      "file_name": "00029.jpg",
+      "idx": 29,
+      "scores": {
+        "nid": 0.9781343400975303
+      },
+      "latency_ms": 9550.05431175232,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000031.pdf",
+      "file_name": "00030.jpg",
+      "idx": 30,
+      "scores": {
+        "nid": 0.9470533208606174
+      },
+      "latency_ms": 7682.938098907471,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000032.pdf",
+      "file_name": "00031.jpg",
+      "idx": 31,
+      "scores": {
+        "nid": 0.9799948038451546
+      },
+      "latency_ms": 8029.175043106079,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000033.pdf",
+      "file_name": "00032.jpg",
+      "idx": 32,
+      "scores": {
+        "nid": 0.9483178937103852
+      },
+      "latency_ms": 6971.688985824585,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000034.pdf",
+      "file_name": "00033.jpg",
+      "idx": 33,
+      "scores": {
+        "nid": 0.9199264898923603
+      },
+      "latency_ms": 6625.720262527466,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000035.pdf",
+      "file_name": "00034.jpg",
+      "idx": 34,
+      "scores": {
+        "nid": 0.9399117971334068
+      },
+      "latency_ms": 27275.633096694946,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000036.pdf",
+      "file_name": "00035.jpg",
+      "idx": 35,
+      "scores": {
+        "nid": 0.971587937946662
+      },
+      "latency_ms": 7181.981801986694,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000037.pdf",
+      "file_name": "00036.jpg",
+      "idx": 36,
+      "scores": {
+        "nid": 0.9300956585724798
+      },
+      "latency_ms": 7010.615110397339,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000038.pdf",
+      "file_name": "00037.jpg",
+      "idx": 37,
+      "scores": {
+        "nid": 0.8402044293015332
+      },
+      "latency_ms": 6860.843896865845,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000039.pdf",
+      "file_name": "00038.jpg",
+      "idx": 38,
+      "scores": {
+        "nid": 0.9327701513551566
+      },
+      "latency_ms": 6815.397024154663,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000040.pdf",
+      "file_name": "00039.jpg",
+      "idx": 39,
+      "scores": {
+        "nid": 0.9754637941352483
+      },
+      "latency_ms": 7233.5498332977295,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000041.pdf",
+      "file_name": "00040.jpg",
+      "idx": 40,
+      "scores": {
+        "nid": 0.958795231123196
+      },
+      "latency_ms": 7558.761835098267,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000042.pdf",
+      "file_name": "00041.jpg",
+      "idx": 41,
+      "scores": {
+        "nid": 0.974025974025974
+      },
+      "latency_ms": 6018.134832382202,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000043.pdf",
+      "file_name": "00042.jpg",
+      "idx": 42,
+      "scores": {
+        "nid": 0.8674911660777385
+      },
+      "latency_ms": 7198.606252670288,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000044.pdf",
+      "file_name": "00043.jpg",
+      "idx": 43,
+      "scores": {
+        "nid": 0.10271903323262843
+      },
+      "latency_ms": 4825.675964355469,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000045.pdf",
+      "file_name": "00044.jpg",
+      "idx": 44,
+      "scores": {
+        "nid": 0.8098591549295775,
+        "teds": 0.972972972972973,
+        "teds_structure": 0.972972972972973
+      },
+      "latency_ms": 7049.631118774414,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000046.pdf",
+      "file_name": "00045.jpg",
+      "idx": 45,
+      "scores": {
+        "nid": 0.6282306163021869,
+        "teds": 0.9891304347826086,
+        "teds_structure": 0.9891304347826086
+      },
+      "latency_ms": 9414.523124694824,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000047.pdf",
+      "file_name": "00046.jpg",
+      "idx": 46,
+      "scores": {
+        "nid": 0.8135593220338984,
+        "teds": 1.0,
+        "teds_structure": 1.0
+      },
+      "latency_ms": 5969.950914382935,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000048.pdf",
+      "file_name": "00047.jpg",
+      "idx": 47,
+      "scores": {
+        "nid": 0.9907834101382489
+      },
+      "latency_ms": 8905.062913894653,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000049.pdf",
+      "file_name": "00048.jpg",
+      "idx": 48,
+      "scores": {
+        "nid": 0.9898562975486053
+      },
+      "latency_ms": 7318.274021148682,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000050.pdf",
+      "file_name": "00049.jpg",
+      "idx": 49,
+      "scores": {
+        "nid": 0.985480943738657
+      },
+      "latency_ms": 5467.380046844482,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000051.pdf",
+      "file_name": "00050.jpg",
+      "idx": 50,
+      "scores": {
+        "nid": 0.9181916038751345,
+        "teds": 0.9782608695652174,
+        "teds_structure": 0.9782608695652174
+      },
+      "latency_ms": 7439.4800662994385,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000052.pdf",
+      "file_name": "00051.jpg",
+      "idx": 51,
+      "scores": {
+        "nid": 0.9495764421137556,
+        "teds": 0.9827437446074202,
+        "teds_structure": 0.9836065573770492
+      },
+      "latency_ms": 8081.908941268921,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000053.pdf",
+      "file_name": "00052.jpg",
+      "idx": 52,
+      "scores": {
+        "nid": 0.9825396825396825,
+        "teds": 1.0,
+        "teds_structure": 1.0
+      },
+      "latency_ms": 5751.486301422119,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000054.pdf",
+      "file_name": "00053.jpg",
+      "idx": 53,
+      "scores": {
+        "nid": 0.9948574100046751
+      },
+      "latency_ms": 5460.999250411987,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000055.pdf",
+      "file_name": "00054.jpg",
+      "idx": 54,
+      "scores": {
+        "nid": 0.9508196721311475
+      },
+      "latency_ms": 5138.214826583862,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000056.pdf",
+      "file_name": "00055.jpg",
+      "idx": 55,
+      "scores": {
+        "nid": 0.8975293641150264
+      },
+      "latency_ms": 5130.1000118255615,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000057.pdf",
+      "file_name": "00056.jpg",
+      "idx": 56,
+      "scores": {
+        "nid": 0.9259485924112607
+      },
+      "latency_ms": 4814.833164215088,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000058.pdf",
+      "file_name": "00057.jpg",
+      "idx": 57,
+      "scores": {
+        "nid": 0.9208353569694027
+      },
+      "latency_ms": 4728.29794883728,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000059.pdf",
+      "file_name": "00058.jpg",
+      "idx": 58,
+      "scores": {
+        "nid": 0.743202416918429
+      },
+      "latency_ms": 5107.323884963989,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000060.pdf",
+      "file_name": "00059.jpg",
+      "idx": 59,
+      "scores": {
+        "nid": 0.8511930585683297
+      },
+      "latency_ms": 5093.981981277466,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000061.pdf",
+      "file_name": "00060.jpg",
+      "idx": 60,
+      "scores": {
+        "nid": 0.8852272727272728
+      },
+      "latency_ms": 4557.384967803955,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000062.pdf",
+      "file_name": "00061.jpg",
+      "idx": 61,
+      "scores": {
+        "nid": 0.9664305512781028
+      },
+      "latency_ms": 5157.5329303741455,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000063.pdf",
+      "file_name": "00062.jpg",
+      "idx": 62,
+      "scores": {
+        "nid": 0.8783877692842251
+      },
+      "latency_ms": 6524.441957473755,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000064.pdf",
+      "file_name": "00063.jpg",
+      "idx": 63,
+      "scores": {
+        "nid": 0.9599491417673236,
+        "teds": 0.9166666666666666,
+        "teds_structure": 0.9166666666666666
+      },
+      "latency_ms": 5408.643007278442,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000065.pdf",
+      "file_name": "00064.jpg",
+      "idx": 64,
+      "scores": {
+        "nid": 0.9207606973058637
+      },
+      "latency_ms": 6811.923027038574,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000066.pdf",
+      "file_name": "00065.jpg",
+      "idx": 65,
+      "scores": {
+        "nid": 0.960995453457765
+      },
+      "latency_ms": 6103.380918502808,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000067.pdf",
+      "file_name": "00066.jpg",
+      "idx": 66,
+      "scores": {
+        "nid": 0.9486143187066974
+      },
+      "latency_ms": 37745.2118396759,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000068.pdf",
+      "file_name": "00067.jpg",
+      "idx": 67,
+      "scores": {
+        "nid": 0.9799242424242425
+      },
+      "latency_ms": 7837.684869766235,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000069.pdf",
+      "file_name": "00068.jpg",
+      "idx": 68,
+      "scores": {
+        "nid": 0.9797665369649805
+      },
+      "latency_ms": 6588.4692668914795,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000070.pdf",
+      "file_name": "00069.jpg",
+      "idx": 69,
+      "scores": {
+        "nid": 0.6738131699846861
+      },
+      "latency_ms": 4794.062852859497,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000071.pdf",
+      "file_name": "00070.jpg",
+      "idx": 70,
+      "scores": {
+        "nid": 0.9554634904194718
+      },
+      "latency_ms": 5029.764175415039,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000072.pdf",
+      "file_name": "00071.jpg",
+      "idx": 71,
+      "scores": {
+        "nid": 0.6673740053050398
+      },
+      "latency_ms": 5259.950876235962,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000073.pdf",
+      "file_name": "00072.jpg",
+      "idx": 72,
+      "scores": {
+        "nid": 0.8405664687071722
+      },
+      "latency_ms": 5580.008029937744,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000074.pdf",
+      "file_name": "00073.jpg",
+      "idx": 73,
+      "scores": {
+        "nid": 0.9346069066862601
+      },
+      "latency_ms": 6451.650142669678,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000075.pdf",
+      "file_name": "00074.jpg",
+      "idx": 74,
+      "scores": {
+        "nid": 0.9588247465342438
+      },
+      "latency_ms": 6946.998119354248,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000076.pdf",
+      "file_name": "00075.jpg",
+      "idx": 75,
+      "scores": {
+        "nid": 0.501577287066246
+      },
+      "latency_ms": 4580.680847167969,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000077.pdf",
+      "file_name": "00076.jpg",
+      "idx": 76,
+      "scores": {
+        "nid": 0.944831013916501
+      },
+      "latency_ms": 4846.504926681519,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000078.pdf",
+      "file_name": "00077.jpg",
+      "idx": 77,
+      "scores": {
+        "nid": 0.8284286507495836,
+        "teds": 0.9866666666666667,
+        "teds_structure": 0.9866666666666667
+      },
+      "latency_ms": 5118.045091629028,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000079.pdf",
+      "file_name": "00078.jpg",
+      "idx": 78,
+      "scores": {
+        "nid": 0.9988465974625144
+      },
+      "latency_ms": 4701.378107070923,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000080.pdf",
+      "file_name": "00079.jpg",
+      "idx": 79,
+      "scores": {
+        "nid": 0.9996396396396396
+      },
+      "latency_ms": 5766.325950622559,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000081.pdf",
+      "file_name": "00080.jpg",
+      "idx": 80,
+      "scores": {
+        "nid": 0.7626666666666666,
+        "teds": 0.9442970822281167,
+        "teds_structure": 0.9442970822281167
+      },
+      "latency_ms": 4918.308973312378,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000082.pdf",
+      "file_name": "00081.jpg",
+      "idx": 81,
+      "scores": {
+        "nid": 0.6226415094339622,
+        "teds": 0.9699820788530467,
+        "teds_structure": 0.9699820788530467
+      },
+      "latency_ms": 4700.439691543579,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000083.pdf",
+      "file_name": "00082.jpg",
+      "idx": 82,
+      "scores": {
+        "nid": 0.49382716049382713,
+        "teds": 0.9665715748665057,
+        "teds_structure": 0.9665715748665057
+      },
+      "latency_ms": 4851.504325866699,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000084.pdf",
+      "file_name": "00083.jpg",
+      "idx": 83,
+      "scores": {
+        "nid": 0.5061728395061729,
+        "teds": 0.9600614439324117,
+        "teds_structure": 0.9600614439324117
+      },
+      "latency_ms": 4897.932052612305,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000085.pdf",
+      "file_name": "00084.jpg",
+      "idx": 84,
+      "scores": {
+        "nid": 0.924956369982548
+      },
+      "latency_ms": 4433.340072631836,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000086.pdf",
+      "file_name": "00085.jpg",
+      "idx": 85,
+      "scores": {
+        "nid": 0.9922206506364922
+      },
+      "latency_ms": 5339.5960330963135,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000087.pdf",
+      "file_name": "00086.jpg",
+      "idx": 86,
+      "scores": {
+        "nid": 0.9895421798745062
+      },
+      "latency_ms": 4902.813911437988,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000088.pdf",
+      "file_name": "00087.jpg",
+      "idx": 87,
+      "scores": {
+        "nid": 0.8513513513513513,
+        "teds": 1.0,
+        "teds_structure": 1.0
+      },
+      "latency_ms": 4990.182161331177,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000089.pdf",
+      "file_name": "00088.jpg",
+      "idx": 88,
+      "scores": {
+        "nid": 0.819672131147541,
+        "teds": 1.0,
+        "teds_structure": 1.0
+      },
+      "latency_ms": 4664.0050411224365,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000090.pdf",
+      "file_name": "00089.jpg",
+      "idx": 89,
+      "scores": {
+        "nid": 0.819672131147541,
+        "teds": 0.9998433583959899,
+        "teds_structure": 1.0
+      },
+      "latency_ms": 4744.582176208496,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000091.pdf",
+      "file_name": "00090.jpg",
+      "idx": 90,
+      "scores": {
+        "nid": 0.9960970170058545
+      },
+      "latency_ms": 6551.781892776489,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000092.pdf",
+      "file_name": "00091.jpg",
+      "idx": 91,
+      "scores": {
+        "nid": 0.9998783306971651
+      },
+      "latency_ms": 5897.412061691284,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000093.pdf",
+      "file_name": "00092.jpg",
+      "idx": 92,
+      "scores": {
+        "nid": 0.9976804870977095
+      },
+      "latency_ms": 4922.416925430298,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000094.pdf",
+      "file_name": "00093.jpg",
+      "idx": 93,
+      "scores": {
+        "nid": 0.9699346405228758
+      },
+      "latency_ms": 4729.135036468506,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000095.pdf",
+      "file_name": "00094.jpg",
+      "idx": 94,
+      "scores": {
+        "nid": 0.9525882922109337
+      },
+      "latency_ms": 4701.195001602173,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000096.pdf",
+      "file_name": "00095.jpg",
+      "idx": 95,
+      "scores": {
+        "nid": 0.9515648286140089
+      },
+      "latency_ms": 4736.930131912231,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000097.pdf",
+      "file_name": "00096.jpg",
+      "idx": 96,
+      "scores": {
+        "nid": 0.9633228078698081
+      },
+      "latency_ms": 4879.143238067627,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000098.pdf",
+      "file_name": "00097.jpg",
+      "idx": 97,
+      "scores": {
+        "nid": 0.841684434968017
+      },
+      "latency_ms": 7856.252908706665,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000099.pdf",
+      "file_name": "00098.jpg",
+      "idx": 98,
+      "scores": {
+        "nid": 0.9171270718232044
+      },
+      "latency_ms": 4715.881824493408,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000100.pdf",
+      "file_name": "00099.jpg",
+      "idx": 99,
+      "scores": {
+        "nid": 0.8529032258064516
+      },
+      "latency_ms": 4717.587947845459,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000101.pdf",
+      "file_name": "00100.jpg",
+      "idx": 100,
+      "scores": {
+        "nid": 0.9997556207233627
+      },
+      "latency_ms": 8654.798746109009,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000102.pdf",
+      "file_name": "00101.jpg",
+      "idx": 101,
+      "scores": {
+        "nid": 0.943024861878453
+      },
+      "latency_ms": 8385.767936706543,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000103.pdf",
+      "file_name": "00102.jpg",
+      "idx": 102,
+      "scores": {
+        "nid": 0.9575
+      },
+      "latency_ms": 4781.010389328003,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000104.pdf",
+      "file_name": "00103.jpg",
+      "idx": 103,
+      "scores": {
+        "nid": 0.9581863979848867
+      },
+      "latency_ms": 4621.863842010498,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000105.pdf",
+      "file_name": "00104.jpg",
+      "idx": 104,
+      "scores": {
+        "nid": 0.8988439306358381
+      },
+      "latency_ms": 4689.3510818481445,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000106.pdf",
+      "file_name": "00105.jpg",
+      "idx": 105,
+      "scores": {
+        "nid": 0.8284417549167927
+      },
+      "latency_ms": 5017.412900924683,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000107.pdf",
+      "file_name": "00106.jpg",
+      "idx": 106,
+      "scores": {
+        "nid": 0.6046901172529313
+      },
+      "latency_ms": 4420.595169067383,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000108.pdf",
+      "file_name": "00107.jpg",
+      "idx": 107,
+      "scores": {
+        "nid": 0.029038112522686066
+      },
+      "latency_ms": 4491.07813835144,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000109.pdf",
+      "file_name": "00108.jpg",
+      "idx": 108,
+      "scores": {
+        "nid": 0.9295644114921223
+      },
+      "latency_ms": 4542.168140411377,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000110.pdf",
+      "file_name": "00109.jpg",
+      "idx": 109,
+      "scores": {
+        "nid": 0.9625312239800167,
+        "teds": 0.9923664122137404,
+        "teds_structure": 0.9923664122137404
+      },
+      "latency_ms": 5047.929048538208,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000111.pdf",
+      "file_name": "00110.jpg",
+      "idx": 110,
+      "scores": {
+        "nid": 0.8668280871670702
+      },
+      "latency_ms": 4555.45973777771,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000112.pdf",
+      "file_name": "00111.jpg",
+      "idx": 111,
+      "scores": {
+        "nid": 0.9722772277227723
+      },
+      "latency_ms": 4544.891834259033,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000113.pdf",
+      "file_name": "00112.jpg",
+      "idx": 112,
+      "scores": {
+        "nid": 0.9520295202952029
+      },
+      "latency_ms": 4886.657953262329,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000114.pdf",
+      "file_name": "00113.jpg",
+      "idx": 113,
+      "scores": {
+        "nid": 0.9114194236926361
+      },
+      "latency_ms": 4308.95209312439,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000115.pdf",
+      "file_name": "00114.jpg",
+      "idx": 114,
+      "scores": {
+        "nid": 0.9613733905579399
+      },
+      "latency_ms": 6511.814117431641,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000116.pdf",
+      "file_name": "00115.jpg",
+      "idx": 115,
+      "scores": {
+        "nid": 0.7654545454545454,
+        "teds": 0.5516129032258064,
+        "teds_structure": 0.564516129032258
+      },
+      "latency_ms": 7530.45392036438,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000117.pdf",
+      "file_name": "00116.jpg",
+      "idx": 116,
+      "scores": {
+        "nid": 0.9615605278255881,
+        "teds": 0.75,
+        "teds_structure": 0.75
+      },
+      "latency_ms": 4842.942953109741,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000118.pdf",
+      "file_name": "00117.jpg",
+      "idx": 117,
+      "scores": {
+        "nid": 0.8978185993111366
+      },
+      "latency_ms": 4906.596899032593,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000119.pdf",
+      "file_name": "00118.jpg",
+      "idx": 118,
+      "scores": {
+        "nid": 0.9681185451279749,
+        "teds": 1.0,
+        "teds_structure": 1.0
+      },
+      "latency_ms": 4711.5631103515625,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000120.pdf",
+      "file_name": "00119.jpg",
+      "idx": 119,
+      "scores": {
+        "nid": 0.9228295819935691,
+        "teds": 0.5069721790669237,
+        "teds_structure": 0.7142857142857143
+      },
+      "latency_ms": 4910.708904266357,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000121.pdf",
+      "file_name": "00120.jpg",
+      "idx": 120,
+      "scores": {
+        "nid": 0.9810778443113772,
+        "teds": 0.4315002571194285,
+        "teds_structure": 0.5454545454545454
+      },
+      "latency_ms": 5121.150970458984,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000122.pdf",
+      "file_name": "00121.jpg",
+      "idx": 121,
+      "scores": {
+        "nid": 0.9565217391304348,
+        "teds": 0.8825757575757576,
+        "teds_structure": 0.9696969696969697
+      },
+      "latency_ms": 8098.146200180054,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000123.pdf",
+      "file_name": "00122.jpg",
+      "idx": 122,
+      "scores": {
+        "nid": 0.8918784255107125
+      },
+      "latency_ms": 4588.474988937378,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000124.pdf",
+      "file_name": "00123.jpg",
+      "idx": 123,
+      "scores": {
+        "nid": 0.8623853211009174
+      },
+      "latency_ms": 4843.300819396973,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000125.pdf",
+      "file_name": "00124.jpg",
+      "idx": 124,
+      "scores": {
+        "nid": 0.9800796812749004
+      },
+      "latency_ms": 4341.012001037598,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000126.pdf",
+      "file_name": "00125.jpg",
+      "idx": 125,
+      "scores": {
+        "nid": 0.8840662478583666
+      },
+      "latency_ms": 4781.66389465332,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000127.pdf",
+      "file_name": "00126.jpg",
+      "idx": 126,
+      "scores": {
+        "nid": 0.992280701754386,
+        "teds": 1.0,
+        "teds_structure": 1.0
+      },
+      "latency_ms": 7358.49404335022,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000128.pdf",
+      "file_name": "00127.jpg",
+      "idx": 127,
+      "scores": {
+        "nid": 0.8200212992545262,
+        "teds": 1.0,
+        "teds_structure": 1.0
+      },
+      "latency_ms": 6444.559097290039,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000129.pdf",
+      "file_name": "00128.jpg",
+      "idx": 128,
+      "scores": {
+        "nid": 0.9468400638831851
+      },
+      "latency_ms": 5054.08787727356,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000130.pdf",
+      "file_name": "00129.jpg",
+      "idx": 129,
+      "scores": {
+        "nid": 0.880093131548312,
+        "teds": 0.9979463437796771,
+        "teds_structure": 1.0
+      },
+      "latency_ms": 4735.910892486572,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000131.pdf",
+      "file_name": "00130.jpg",
+      "idx": 130,
+      "scores": {
+        "nid": 0.8345626975763962
+      },
+      "latency_ms": 4578.729867935181,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000132.pdf",
+      "file_name": "00131.jpg",
+      "idx": 131,
+      "scores": {
+        "nid": 0.9130992053319662,
+        "teds": 0.8571428571428572,
+        "teds_structure": 0.8571428571428572
+      },
+      "latency_ms": 4872.684717178345,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000133.pdf",
+      "file_name": "00132.jpg",
+      "idx": 132,
+      "scores": {
+        "nid": 0.9772618858324058
+      },
+      "latency_ms": 5372.2851276397705,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000134.pdf",
+      "file_name": "00133.jpg",
+      "idx": 133,
+      "scores": {
+        "nid": 0.7829457364341086
+      },
+      "latency_ms": 4461.111068725586,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000135.pdf",
+      "file_name": "00134.jpg",
+      "idx": 134,
+      "scores": {
+        "nid": 0.9968728755948334
+      },
+      "latency_ms": 4971.557855606079,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000136.pdf",
+      "file_name": "00135.jpg",
+      "idx": 135,
+      "scores": {
+        "nid": 0.8398994132439229
+      },
+      "latency_ms": 4565.622091293335,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000137.pdf",
+      "file_name": "00136.jpg",
+      "idx": 136,
+      "scores": {
+        "nid": 0.9425186485300571
+      },
+      "latency_ms": 4866.903066635132,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000138.pdf",
+      "file_name": "00137.jpg",
+      "idx": 137,
+      "scores": {
+        "nid": 0.9845379359942467
+      },
+      "latency_ms": 5238.257169723511,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000139.pdf",
+      "file_name": "00138.jpg",
+      "idx": 138,
+      "scores": {
+        "nid": 0.9543047656403216
+      },
+      "latency_ms": 4847.899913787842,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000140.pdf",
+      "file_name": "00139.jpg",
+      "idx": 139,
+      "scores": {
+        "nid": 0.9306479859894922
+      },
+      "latency_ms": 5100.091934204102,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000141.pdf",
+      "file_name": "00140.jpg",
+      "idx": 140,
+      "scores": {
+        "nid": 0.9528688524590164
+      },
+      "latency_ms": 6815.9339427948,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000142.pdf",
+      "file_name": "00141.jpg",
+      "idx": 141,
+      "scores": {
+        "nid": 0.9526362823949955
+      },
+      "latency_ms": 6689.188718795776,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000143.pdf",
+      "file_name": "00142.jpg",
+      "idx": 142,
+      "scores": {
+        "nid": 0.9831570701135919
+      },
+      "latency_ms": 4684.0760707855225,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000144.pdf",
+      "file_name": "00143.jpg",
+      "idx": 143,
+      "scores": {
+        "nid": 0.8941018766756033
+      },
+      "latency_ms": 5139.152050018311,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000145.pdf",
+      "file_name": "00144.jpg",
+      "idx": 144,
+      "scores": {
+        "nid": 0.9056376243593609
+      },
+      "latency_ms": 4776.735067367554,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000146.pdf",
+      "file_name": "00145.jpg",
+      "idx": 145,
+      "scores": {
+        "nid": 0.9856614246068455,
+        "teds": 1.0,
+        "teds_structure": 1.0
+      },
+      "latency_ms": 4909.637212753296,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000147.pdf",
+      "file_name": "00146.jpg",
+      "idx": 146,
+      "scores": {
+        "nid": 0.929481733220051,
+        "teds": 0.9991525423728813,
+        "teds_structure": 1.0
+      },
+      "latency_ms": 5239.521026611328,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000148.pdf",
+      "file_name": "00147.jpg",
+      "idx": 147,
+      "scores": {
+        "nid": 0.8604326587578507
+      },
+      "latency_ms": 4755.0048828125,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000149.pdf",
+      "file_name": "00148.jpg",
+      "idx": 148,
+      "scores": {
+        "nid": 0.6955177743431221,
+        "teds": 0.0,
+        "teds_structure": 0.0
+      },
+      "latency_ms": 4488.743782043457,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000150.pdf",
+      "file_name": "00149.jpg",
+      "idx": 149,
+      "scores": {
+        "nid": 0.8962962962962963,
+        "teds": 0.8850312420278943,
+        "teds_structure": 0.8888888888888888
+      },
+      "latency_ms": 4711.647987365723,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000151.pdf",
+      "file_name": "00150.jpg",
+      "idx": 150,
+      "scores": {
+        "nid": 0.9790110281038776
+      },
+      "latency_ms": 6301.426887512207,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000152.pdf",
+      "file_name": "00151.jpg",
+      "idx": 151,
+      "scores": {
+        "nid": 0.8981608564370025
+      },
+      "latency_ms": 6990.830183029175,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000153.pdf",
+      "file_name": "00152.jpg",
+      "idx": 152,
+      "scores": {
+        "nid": 0.987515299877601
+      },
+      "latency_ms": 4542.989015579224,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000154.pdf",
+      "file_name": "00153.jpg",
+      "idx": 153,
+      "scores": {
+        "nid": 0.9075297225891678
+      },
+      "latency_ms": 4569.141149520874,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000155.pdf",
+      "file_name": "00154.jpg",
+      "idx": 154,
+      "scores": {
+        "nid": 0.052631578947368474
+      },
+      "latency_ms": 4341.660022735596,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000156.pdf",
+      "file_name": "00155.jpg",
+      "idx": 155,
+      "scores": {
+        "nid": 0.9763313609467456
+      },
+      "latency_ms": 6616.9610023498535,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000157.pdf",
+      "file_name": "00156.jpg",
+      "idx": 156,
+      "scores": {
+        "nid": 0.9918458117123795
+      },
+      "latency_ms": 4696.133136749268,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000158.pdf",
+      "file_name": "00157.jpg",
+      "idx": 157,
+      "scores": {
+        "nid": 0.9879168680521991
+      },
+      "latency_ms": 2831.5298557281494,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000159.pdf",
+      "file_name": "00158.jpg",
+      "idx": 158,
+      "scores": {
+        "nid": 0.9920245398773007
+      },
+      "latency_ms": 4611.56702041626,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000160.pdf",
+      "file_name": "00159.jpg",
+      "idx": 159,
+      "scores": {
+        "nid": 0.9931761786600496
+      },
+      "latency_ms": 4708.465099334717,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000161.pdf",
+      "file_name": "00160.jpg",
+      "idx": 160,
+      "scores": {
+        "nid": 0.9929622520793346
+      },
+      "latency_ms": 4753.008127212524,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000162.pdf",
+      "file_name": "00161.jpg",
+      "idx": 161,
+      "scores": {
+        "nid": 0.9890265486725663
+      },
+      "latency_ms": 2898.470878601074,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000163.pdf",
+      "file_name": "00162.jpg",
+      "idx": 162,
+      "scores": {
+        "nid": 0.9656203288490284
+      },
+      "latency_ms": 6429.195880889893,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000164.pdf",
+      "file_name": "00163.jpg",
+      "idx": 163,
+      "scores": {
+        "nid": 0.9974728051862433
+      },
+      "latency_ms": 5084.174156188965,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000165.pdf",
+      "file_name": "00164.jpg",
+      "idx": 164,
+      "scores": {
+        "nid": 0.8693635660912136,
+        "teds": 0.7222222222222222,
+        "teds_structure": 0.7222222222222222
+      },
+      "latency_ms": 4709.163188934326,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000166.pdf",
+      "file_name": "00165.jpg",
+      "idx": 165,
+      "scores": {
+        "nid": 0.9158097686375322,
+        "teds": 0.79421768707483,
+        "teds_structure": 0.8571428571428572
+      },
+      "latency_ms": 5634.683847427368,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000167.pdf",
+      "file_name": "00166.jpg",
+      "idx": 166,
+      "scores": {
+        "nid": 0.9825507614213198
+      },
+      "latency_ms": 4860.511064529419,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000168.pdf",
+      "file_name": "00167.jpg",
+      "idx": 167,
+      "scores": {
+        "nid": 0.9387417218543046
+      },
+      "latency_ms": 5226.557970046997,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000169.pdf",
+      "file_name": "00168.jpg",
+      "idx": 168,
+      "scores": {
+        "nid": 0.9676148796498906
+      },
+      "latency_ms": 4982.816696166992,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000170.pdf",
+      "file_name": "00169.jpg",
+      "idx": 169,
+      "scores": {
+        "nid": 0.9202302631578947,
+        "teds": 0.9201223544973545,
+        "teds_structure": 0.9259259259259259
+      },
+      "latency_ms": 4823.601961135864,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000171.pdf",
+      "file_name": "00170.jpg",
+      "idx": 170,
+      "scores": {
+        "nid": 0.012800000000000034
+      },
+      "latency_ms": 4714.291334152222,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000172.pdf",
+      "file_name": "00171.jpg",
+      "idx": 171,
+      "scores": {
+        "nid": 0.7544034562977733
+      },
+      "latency_ms": 4857.1178913116455,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000173.pdf",
+      "file_name": "00172.jpg",
+      "idx": 172,
+      "scores": {
+        "nid": 0.7711918419375399
+      },
+      "latency_ms": 4591.008901596069,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000174.pdf",
+      "file_name": "00173.jpg",
+      "idx": 173,
+      "scores": {
+        "nid": 0.8709677419354839
+      },
+      "latency_ms": 4975.3100872039795,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000175.pdf",
+      "file_name": "00174.jpg",
+      "idx": 174,
+      "scores": {
+        "nid": 0.7623355263157895
+      },
+      "latency_ms": 4918.982028961182,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000176.pdf",
+      "file_name": "00175.jpg",
+      "idx": 175,
+      "scores": {
+        "nid": 0.9535272484119024
+      },
+      "latency_ms": 4716.056108474731,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000177.pdf",
+      "file_name": "00176.jpg",
+      "idx": 176,
+      "scores": {
+        "nid": 0.9220183486238532
+      },
+      "latency_ms": 5043.365001678467,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000178.pdf",
+      "file_name": "00177.jpg",
+      "idx": 177,
+      "scores": {
+        "nid": 0.9836888331242158,
+        "teds": 0.9655172413793104,
+        "teds_structure": 0.9655172413793104
+      },
+      "latency_ms": 4310.302972793579,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000179.pdf",
+      "file_name": "00178.jpg",
+      "idx": 178,
+      "scores": {
+        "nid": 0.9227072486984381
+      },
+      "latency_ms": 6539.257049560547,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000180.pdf",
+      "file_name": "00179.jpg",
+      "idx": 179,
+      "scores": {
+        "nid": 1.0,
+        "teds": 1.0,
+        "teds_structure": 1.0
+      },
+      "latency_ms": 4722.405195236206,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000181.pdf",
+      "file_name": "00180.jpg",
+      "idx": 180,
+      "scores": {
+        "nid": 0.31010452961672474
+      },
+      "latency_ms": 2822.0391273498535,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000182.pdf",
+      "file_name": "00181.jpg",
+      "idx": 181,
+      "scores": {
+        "nid": 0.7823343848580442,
+        "teds": 0.7496666666666667,
+        "teds_structure": 0.75
+      },
+      "latency_ms": 4859.746694564819,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000183.pdf",
+      "file_name": "00182.jpg",
+      "idx": 182,
+      "scores": {
+        "nid": 0.6740878169449598
+      },
+      "latency_ms": 5076.713800430298,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000184.pdf",
+      "file_name": "00183.jpg",
+      "idx": 183,
+      "scores": {
+        "nid": 0.9807987711213517
+      },
+      "latency_ms": 4931.124925613403,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000185.pdf",
+      "file_name": "00184.jpg",
+      "idx": 184,
+      "scores": {
+        "nid": 0.9855511535772548
+      },
+      "latency_ms": 7084.9268436431885,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000186.pdf",
+      "file_name": "00185.jpg",
+      "idx": 185,
+      "scores": {
+        "nid": 0.9604361806235147
+      },
+      "latency_ms": 7201.335191726685,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000187.pdf",
+      "file_name": "00186.jpg",
+      "idx": 186,
+      "scores": {
+        "nid": 0.8999467802022352,
+        "teds": 0.7297297297297297,
+        "teds_structure": 0.8918918918918919
+      },
+      "latency_ms": 7594.484090805054,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000188.pdf",
+      "file_name": "00187.jpg",
+      "idx": 187,
+      "scores": {
+        "nid": 0.9216263995285798,
+        "teds": 0.9760215053763441,
+        "teds_structure": 0.9935483870967742
+      },
+      "latency_ms": 10926.832914352417,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000189.pdf",
+      "file_name": "00188.jpg",
+      "idx": 188,
+      "scores": {
+        "nid": 0.8298507462686567,
+        "teds": 0.8812649001925773,
+        "teds_structure": 0.9772736943748875
+      },
+      "latency_ms": 9010.575294494629,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000190.pdf",
+      "file_name": "00189.jpg",
+      "idx": 189,
+      "scores": {
+        "nid": 0.9174696271470465,
+        "teds": 0.9717942732648615,
+        "teds_structure": 0.9723389355742297
+      },
+      "latency_ms": 5336.140871047974,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000191.pdf",
+      "file_name": "00190.jpg",
+      "idx": 190,
+      "scores": {
+        "nid": 0.9995618838992333
+      },
+      "latency_ms": 4854.856967926025,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000192.pdf",
+      "file_name": "00191.jpg",
+      "idx": 191,
+      "scores": {
+        "nid": 0.9978798586572438
+      },
+      "latency_ms": 5376.903057098389,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000193.pdf",
+      "file_name": "00192.jpg",
+      "idx": 192,
+      "scores": {
+        "nid": 0.9989829129373474
+      },
+      "latency_ms": 5231.758832931519,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000194.pdf",
+      "file_name": "00193.jpg",
+      "idx": 193,
+      "scores": {
+        "nid": 0.99915611814346
+      },
+      "latency_ms": 5105.314016342163,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000195.pdf",
+      "file_name": "00194.jpg",
+      "idx": 194,
+      "scores": {
+        "nid": 0.9997734481196194
+      },
+      "latency_ms": 5238.825798034668,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000196.pdf",
+      "file_name": "00195.jpg",
+      "idx": 195,
+      "scores": {
+        "nid": 1.0
+      },
+      "latency_ms": 4999.691009521484,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000197.pdf",
+      "file_name": "00196.jpg",
+      "idx": 196,
+      "scores": {
+        "nid": 0.9103337354242058,
+        "teds": 0.5075631706472827,
+        "teds_structure": 0.5666666666666667
+      },
+      "latency_ms": 5484.304189682007,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000198.pdf",
+      "file_name": "00197.jpg",
+      "idx": 197,
+      "scores": {
+        "nid": 0.9096209912536444
+      },
+      "latency_ms": 2841.334104537964,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000199.pdf",
+      "file_name": "00198.jpg",
+      "idx": 198,
+      "scores": {
+        "nid": 0.7966260543580131
+      },
+      "latency_ms": 6398.614883422852,
+      "error": null
+    },
+    {
+      "sample_id": "dpbench_01030000000200.pdf",
+      "file_name": "00199.jpg",
+      "idx": 199,
+      "scores": {
+        "nid": 0.8070175438596492,
+        "teds": 0.9573054357814378,
+        "teds_structure": 0.9574468085106383
+      },
+      "latency_ms": 5172.6648807525635,
+      "error": null
+    }
+  ],
+  "total": 200,
+  "errors": 0
+}
